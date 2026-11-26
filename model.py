@@ -65,12 +65,39 @@ class Feed:
     field_1: int | None = None
     field_2: float | None = None
     field_3: float | None = None
+    field_4: int | None = None
     field_5: int | None = None
+    field_6: int | None = None
+    field_7: int | None = None
+    field_8: int | None = None
+    field_10: bool | None = None
     field_6: int | None = None
     field_9: int | None = None
     field_11: str | None = None
     field_12: int | None = None
     field_15: int | None = None
+
+    flight_number: str | None = None
+    registration: str | None = None
+    origin: str | None = None
+    destination: str | None = None
+    diverted_to: str | None = None
+    aircraft_type: str | None = None
+    squawk: int | None = None
+    vertical_speed_fpm: int | None = None
+    aircraft_age: str | None = None
+    country_of_reg: int | None = None
+    logo_id: int | None = None
+    airspace: int | None = None
+    airspace_id: str | None = None
+    icao_address: int | None = None
+    icao_hex: str | None = None
+    operated_by_id: int | None = None
+    squawk_availability: bool | None = None
+    vspeed_availability: bool | None = None
+    airspace_availability: bool | None = None
+    schedule: dict[str, int | None] = field(default_factory=dict)
+    ems_info: dict[str, int | None] = field(default_factory=dict)
 
     histories: list[PositionHistory] = field(default_factory=list)
     track: list[TrackPoint] = field(default_factory=list)
