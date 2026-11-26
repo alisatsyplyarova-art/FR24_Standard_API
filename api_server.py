@@ -127,7 +127,7 @@ class _Handler(BaseHTTPRequestHandler):
                 row["altitude_ft"] = item["altitude_ft"]
             if item.get("speed_kt") is not None:
                 row["speed_kt"] = item["speed_kt"]
-            if item.get("heading") is not None:
+            if row.get("track") is None and item.get("heading") is not None:
                 row["track"] = round(item["heading"], 1)
             selected.append(row)
 
