@@ -651,3 +651,157 @@ python -m compileall .
 ---
 
 **Главное правило проекта:** сначала докажи структуру и значение поля на реальном обезличенном образце, затем добавляй его в декодер, кэш и API. Не путай внутренний ID FR24 с ICAO, не публикуй HAR и не заявляй о проверке, которую фактически не выполнял.
+
+
+---
+
+## 17. Аудит protobuf-схемы по опубликованному проекту abc8747/fr24
+
+При повторном исследовании найден проект [abc8747/fr24](https://github.com/abc8747/fr24), в котором опубликованы исходные protobuf-файлы, сгенерированные Python-классы и типизированные структуры. Для текущего этапа это основной внешний reference. Это сторонняя reverse-engineered реализация, а не официальная спецификация FR24; её схема сверяется с нашими обезличенными captures.
+
+Исходники:
+- [`_common.proto`](https://github.com/abc8747/fr24/blob/master/src/fr24/proto/_common.proto)
+- [`_live_feed.proto`](https://github.com/abc8747/fr24/blob/master/src/fr24/proto/_live_feed.proto)
+- [`types/cache.py`](https://github.com/abc8747/fr24/blob/master/src/fr24/types/cache.py)
+- [`grpc.py`](https://github.com/abc8747/fr24/blob/master/src/fr24/grpc.py)
+
+### 17.1. Подтверждённая карта LiveFeed Flight
+
+| № | Имя protobuf | Тип protobuf | Смысл / единицы |
+|---:|---|---|---|
+| 1 | flightid | int32 | Внутренний ID FR24; не ICAO |
+| 2 | lat | float | Широта, градусы |
+| 3 | lon | float | Долгота, градусы |
+| 4 | track | int32 | Истинный путевой угол, градусы от севера по часовой стрелке |
+| 5 | alt | int32 | Барометрическая высота, футы |
+| 6 | speed | int32 | Путевая скорость, узлы |
+| 7 | icon | enum Icon | Код иконки |
+| 8 | status | enum Status | Статус отображения |
+| 9 | timestamp | int32 | Unix timestamp, секунды |
+| 10 | on_ground | bool | Признак нахождения на земле |
+| 11 | callsign | string | Позывной |
+| 12 | source | enum DataSource | Источник данных |
+| 13 | extra_info | ExtraFlightInfo | Дополнительная информация |
+| 14 | position_buffer | PositionBuffer | История недавних позиций |
+| 15 | timestamp_ms | uint64 | Unix timestamp, миллисекунды |
+
+### 17.2. Подтверждённая карта ExtraFlightInfo
+
+| № | Имя | Тип | Примечание |
+|---:|---|---|---|
+| 1 | flight | string | Номер рейса |
+| 2 | reg | string | Регистрация |
+| 3 | route | Route | Вложенный маршрут |
+| 4 | type | string | Код типа воздушного судна |
+| 5 | squawk | int32 | Код ответчика; в схеме указан как десятичное представление преобразованного octal-кода |
+| 6 | vspeed | int32 | Вертикальная скорость, фут/мин |
+| 7 | age | string | Возраст борта текстом |
+| 8 | country_of_reg | int32 | Код страны регистрации |
+| 9 | schedule | Schedule | Вложенное расписание |
+| 10 | logo_id | int32 | ID логотипа авиакомпании |
+| 11 | airspace | int32 | Числовой ID FIR/airspace |
+| 12 | ems_info | EMSInfo | Измерения Enhanced Mode-S |
+| 13 | ems_availability | EMSAvailability | Отдельное вложенное сообщение доступности EMS-полей |
+| 14 | icao_address | uint32 | 24-битный ICAO-адрес |
+| 15 | operated_by_id | uint32 | ID оператора |
+| 16 | squawk_availability | bool | Доступность squawk |
+| 17 | vspeed_availability | bool | Доступность vertical speed |
+| 18 | airspace_availability | bool | Доступность airspace |
+| 19 | airspace_id | string | Строковый ID airspace |
+
+**Исправление прежней предварительной карты:** поле 13 ExtraFlightInfo — не тринадцатое значение EMSInfo, а сообщение EMSAvailability. Поле 21 server_time_ms не относится к ExtraFlightInfo. В отдельной структуре ExtendedFlightInfo поле 21 действительно описано как серверное время в миллисекундах. Не переносить его в ExtraFlightInfo.
+
+В схеме также указано, что поля ExtraFlightInfo 15–19 доступны только при выбранном рейсе. Следовательно, их отсутствие в обычном LiveFeed нормально и не должно считаться ошибкой декодера.
+
+### 17.3. Вложенные сообщения
+
+**Route**
+- 1 `from`: строка аэропорта отправления;
+- 2 `to`: строка аэропорта назначения;
+- 3 `diverted_to`: строка аэропорта перенаправления.
+
+**Schedule**
+- 1 `std`: плановое отправление;
+- 2 `etd`: расчётное отправление;
+- 3 `atd`: фактическое отправление;
+- 4 `sta`: плановое прибытие;
+- 5 `eta`: расчётное прибытие;
+- 6 `ata`: фактическое прибытие;
+- 7 `progress_pct`: процент выполнения маршрута.
+
+Времена Schedule в опубликованной схеме — Unix timestamp в секундах.
+
+**EMSInfo**
+- 1 qnh — установка высотомера;
+- 2 amcp — выбранная высота MCP/FCU;
+- 3 afms — выбранная высота FMS;
+- 4 oat — наружная температура;
+- 5 ias — приборная скорость, узлы;
+- 6 tas — истинная воздушная скорость, узлы;
+- 7 mach — число Mach, умноженное на 1000 (например, 704 означает M 0.704);
+- 8 agps — GPS-высота;
+- 9 agpsdiff — разность высот;
+- 10 apflags — флаги автопилота;
+- 11 wind_dir — направление ветра;
+- 12 wind_speed — скорость ветра;
+- 13 rs — дополнительное значение, семантика требует уточнения.
+
+Для oat, wind_dir и части EMS-параметров комментарии исходной схемы прямо отмечают неопределённость единиц. Не показывать их как окончательно подтверждённые величины без проверки реальных значений.
+
+**EMSAvailability** имеет 13 bool-полей с теми же именами, что и EMSInfo: qnh, amcp, afms, oat, ias, tas, mach, agps, agpsdiff, apflags, wind_dir, wind_speed, rs. Это именно флаги доступности, а не значения измерений.
+
+### 17.4. PositionBuffer: уточнение signed-типа
+
+В опубликованной схеме RecentPosition:
+- field 1 `delta_lat`: int32, смещение широты в единицах 1e-5 градуса;
+- field 2 `delta_lon`: int32, смещение долготы в единицах 1e-5 градуса;
+- field 3 `delta_ms`: uint32, временная дельта в миллисекундах.
+
+Это protobuf int32 VARINT с two's-complement sign extension, не ZigZag. В декодере применяется отдельная функция `int32_decode`. Ранее подтверждённая контрольная проверка 90 координат (погрешность не более 1e-5 градуса) остаётся важным регрессионным тестом; после изменения signed-декодирования её нужно повторить на том же fixture.
+
+### 17.5. Enum-справочники
+
+**Status:** 0 NORMAL, 1 BACKGROUND, 2 EMERGENCY, 3 NOT_AVAILABLE, 4 LIVE.
+
+**DataSource:** 0 ADSB, 1 MLAT, 2 FLARM, 3 FAA, 4 ESTIMATED, 5 SATELLITE, 6 OTHER_DATA_SOURCE, 7 UAT, 8 SPIDERTRACKS, 9 AUS, 10 AIERON.
+
+**Icon:** 0 B738, 1 FGTR, 2 ASW20, 3 C206, 4 C303, 5 LJ60, 6 Q300, 7 B736, 8 FOKKER100, 9 RJ85, 10 A320, 11 B757, 12 B767, 13 A3ST, 14 MD11, 15 A330, 16 A343, 17 A346, 18 B777, 19 B747, 20 A380, 21 A225, 22 SI2, 23 EC, 24 BALL, 25 GRND, 26 SLEI, 27 DRON, 28 SAT, 29 ISS, 30 CONC.
+
+В REST API сохраняются исходные числовые поля для совместимости; дополнительно доступны человекочитаемые `icon_name`, `status_name`, `source_name`. Неизвестный enum-код не должен приводить к падению API.
+
+### 17.6. Изменения нашего сервера по результатам сверки
+
+В ветке `feature/proto-schema-alignment`:
+- добавлен `int32_decode` для signed protobuf int32;
+- Feed и поля ExtraFlightInfo/Schedule/EMSInfo, объявленные как int32, переводятся в signed-значения;
+- PositionBuffer delta_lat/delta_lon декодируются как int32, не как int64;
+- ExtraFlightInfo.field_13 декодируется как EMSAvailability;
+- EMSAvailability проходит через модель и кэш;
+- в REST-ответ добавлены `ems_availability` и `timestamp_s`;
+- REST-ответ дополнен названиями enum `icon_name`, `status_name`, `source_name`;
+- исходные числовые enum-коды сохранены.
+
+Схема не гарантирует наличие всех полей в каждом ответе. Поля, доступность которых зависит от выбранного рейса, учётной записи или конкретного метода FR24, должны оставаться необязательными.
+
+### 17.7. Проекты с готовыми API и их применимость
+
+| Проект | Назначение | Применимость |
+|---|---|---|
+| [abc8747/fr24](https://github.com/abc8747/fr24) | Python-клиент FR24 gRPC и protobuf | Главный reference для схемы и методов; не готовый публичный HTTP-сервер |
+| [jonaskroedel/fr24REST](https://github.com/jonaskroedel/fr24REST) | REST-обёртка над FR24-источниками | Изучать как пример API-контракта; не брать как основу без проверки актуальности upstream |
+| [bakkel/adsb-portal](https://github.com/bakkel/adsb-portal) | Локальный портал для FR24 feeder | Полезен для локального feeder API, но не заменяет глобальный FR24 LiveFeed |
+| [karman-bhatti/flightscnr](https://github.com/karman-bhatti/flightscnr) | Радар и локальный веб-портал с несколькими источниками | Полезен как архитектурный пример объединения FR24 и ADS-B |
+| [SInsanali/skywatch](https://github.com/SInsanali/skywatch) | Self-hosted FastAPI | Альтернативный ADS-B источник, не FR24 |
+| [flyitalyadsb/adsb-api](https://github.com/flyitalyadsb/adsb-api) | Облачный JSON API глобальных ADS-B/MLAT данных | Потенциальный дополнительный источник; не эквивалент FR24 |
+
+Официальный FR24 API: https://fr24api.flightradar24.com/api. Он отдельный от LiveFeed gRPC, использует ключ и тарифные условия. Не переключать текущий сборщик на него без отдельного проектирования и проверки стоимости/лимитов.
+
+### 17.8. Проверки перед признанием изменений завершёнными
+
+- [ ] Unit-тесты signed int32 на положительных и отрицательных значениях.
+- [ ] Тест Feed с ExtraFlightInfo и без него.
+- [ ] Тест EMSInfo и EMSAvailability как двух разных вложенных сообщений.
+- [ ] Тест Schedule с отрицательными/нулевыми и обычными timestamp значениями.
+- [ ] Регрессионная проверка 90 точек PositionBuffer на исходном обезличенном fixture.
+- [ ] Проверка API JSON и обратной совместимости старых ключей.
+- [ ] Проверка на живом FR24-потоке; без неё не утверждать, что все поля приходят в текущей сессии.
