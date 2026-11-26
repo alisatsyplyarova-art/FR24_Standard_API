@@ -20,7 +20,6 @@ from protobuf_parser import (
     collect_fields,
     first_varint,
     first_fixed32,
-    int64_decode,
     int32_decode,
 )
 
@@ -55,7 +54,7 @@ def decode_position_sample(
 
     sample = PositionSample(
         field_1=_first_int32(fields, 1),
-        field_2=first_varint(fields, 2),
+        field_2=_first_int32(fields, 2),
         field_3=first_varint(fields, 3),
         all_fields=fields,
         source=source,
@@ -92,8 +91,8 @@ def build_track(
             if sample.missing:
                 continue
 
-            d_lat = int64_decode(sample.field_1)
-            d_lon = int64_decode(sample.field_2)
+            d_lat = sample.field_1
+            d_lon = sample.field_2
 
             timestamp = (
                 base_time - sample.field_3 if base_time is not None else None
@@ -304,7 +303,7 @@ def decode_feed(
     extra = _decode_extra_flight_info(extra_data) if extra_data is not None else {}
 
     feed = Feed(
-        field_1=first_varint(fields, 1),
+        field_1=_first_int32(fields, 1),
         field_2=first_fixed32(fields, 2),
         field_3=first_fixed32(fields, 3),
         field_4=_first_int32(fields, 4),
