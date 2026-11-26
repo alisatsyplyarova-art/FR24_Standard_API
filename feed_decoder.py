@@ -215,7 +215,11 @@ def _nested_string(fields, number):
 
 
 def _decode_extra_flight_info(data: bytes) -> dict:
-    extra = _all_fields(data)
+    try:
+        extra = _all_fields(data)
+    except (ValueError, TypeError):
+        return {}
+
     route = _nested_fields(extra, 3)
     schedule = _nested_fields(extra, 9)
     ems = _nested_fields(extra, 12)
