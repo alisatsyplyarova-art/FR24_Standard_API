@@ -12,7 +12,7 @@ import requests
 
 from aircraft_cache import CACHE
 from analysis_context import AnalysisContext
-from api_server import get_active_area, start_api_server
+from api_server import get_active_area, set_active_area, start_api_server
 from feed_decoder import decode_feed_response
 from grpc_web import decode_grpc_web_body
 from model import SourceRef
@@ -169,6 +169,12 @@ def decode_response(data: bytes, request_index: int) -> tuple[list, list[str]]:
 def main() -> None:
     setup_logging()
     config = load_config()
+    # Publish the configured radar area immediately; ESP32 may replace it later.
+    set_active_area(
+        config["latitude"],
+        config["longitude"],
+        config["radius_km"] / 1.852,
+    )
     template, headers = load_request_template()
     # Validate the template/config before opening the API listener.
     build_request_body(template)
