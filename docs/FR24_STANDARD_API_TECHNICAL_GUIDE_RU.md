@@ -305,11 +305,16 @@ REST API сохраняет числовые коды icon, status и source, н
     "radius_km": 100,
     "radius_nm": 53.996
   },
-  "now": 1790000000000
+  "source_stats": [
+    {"source": 0, "count": 10},
+    {"source": 1, "count": 2}
+  ],
+  "feed_server_time_ms": 1790000000000,
+  "now": 1790000001000
 }
 ```
 
-Числа выше иллюстративные, не являются результатом реального запроса.
+Числа выше иллюстративные, не являются результатом реального запроса. source_stats — последняя статистика LiveFeed по enum DataSource. feed_server_time_ms — время сервера FR24 из FeedResponse.field_4. now — локальное время формирования /health.
 
 ### GET /aircraft
 
@@ -684,5 +689,9 @@ python -m compileall .
 - igolaizola/fr24 — https://github.com/igolaizola/fr24 — Go-клиент/CLI, использует gRPC-Web и содержит protobuf-схемы в pkg/proto. Для сверки использованы _common.proto и _live_feed.proto. Это клиент и CLI, а не готовый универсальный REST-сервер.
 - AlexandrErohin/home-assistant-flightradar24 — https://github.com/AlexandrErohin/home-assistant-flightradar24 — интеграция Home Assistant, использует отдельную библиотеку FlightRadarAPI и HTTP-источники; полезна как пример нормализации атрибутов, трекинга, истории и обработки ограничений, но не является реализацией нашего gRPC-Web декодера.
 - t7spotter/liveflights — https://github.com/t7spotter/liveflights — Flask-приложение, которое предоставляет REST/JSON поверх нескольких upstream HTTP endpoints FR24. Это пример REST-обёртки, но не сервер для приёма нашего LiveFeed protobuf потока.
+- grega/flight-finder — https://github.com/grega/flight-finder — Flask API для маломощных Wi-Fi устройств: /health, /closest-flight и /flights-in-radius; ответ содержит позицию, высоту, скорость, вертикальную скорость, регистрацию, ICAO 24-bit и маршрут. Получает данные через библиотеку FlightRadarAPI, а не через наш protobuf LiveFeed. По назначению ближе всего к нашему ESP32-клиенту.
+- huntrw6/airspace — https://github.com/huntrw6/airspace — self-hosted Docker PWA с картой, профилями зон и уведомлениями; backend опрашивает FR24 HTTP JSON feed и clickhandler, ограничивает число detail-запросов и учитывает HTTP 429. Имеет собственные API маршруты для интерфейса, но это полноценное приложение, не чистый адаптер protobuf.
+- Snr1s3/FlightsASL — https://github.com/Snr1s3/FlightsASL — FastAPI + PostgreSQL, хранит аэропорты и расписания рейсов, предоставляет Swagger/OpenAPI и API для поиска/сохранения расписаний. Использует библиотеку-клиент FR24; не потоковый LiveFeed сервер.
+- mitchtech/flight-exporter — https://github.com/mitchtech/flight-exporter — Docker Prometheus exporter, отдаёт метрики /metrics по самолётам в заданном радиусе; не JSON REST API общего назначения.
 
 В текущем проекте применены подтверждённые protobuf-структуры и идеи обработки выбранных рейсов/дополнительных атрибутов. Код чужих проектов целиком не копировался. Схема из открытого репозитория — независимое техническое описание, а не официальная спецификация FR24; при изменениях протокола её нужно повторно сверять с живыми обезличенными payload.
