@@ -15,11 +15,17 @@ class AircraftCache:
         self.max_points = max_points
         self.max_age = max_age
         self._aircraft: dict[str, dict] = {}
+        self._source_stats: list[dict[str, int]] = []
+        self._feed_server_time_ms: int | None = None
         self._lock = threading.RLock()
 
-    def update(self, feeds) -> None:
+    def update(self, feeds, source_stats=None, server_time_ms=None) -> None:
         now = time.time()
         with self._lock:
+            if source_stats is not None:
+                self._source_stats = [dict(item) for item in source_stats]
+            if server_time_ms is not None:
+                self._feed_server_time_ms = int(server_time_ms)
             for feed in feeds:
                 aircraft_id = getattr(feed, "field_1", None)
                 latitude = getattr(feed, "field_2", None)
@@ -140,6 +146,13 @@ class AircraftCache:
                 item["last_seen"] = max(item["last_seen"], timestamp)
 
             self._remove_stale(now)
+
+    def metadata_snapshot(self) -> dict:
+        with self._lock:
+            return {
+                "source_stats": [dict(item) for item in self._source_stats],
+                "feed_server_time_ms": self._feed_server_time_ms,
+            }
 
     def _remove_stale(self, now: float) -> None:
         stale_ids = [
