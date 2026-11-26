@@ -5,6 +5,7 @@ import math
 import re
 import threading
 import time
+from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 
@@ -13,6 +14,8 @@ from aircraft_cache import CACHE
 
 _ROUTE = re.compile(r"^/v2/lat/(-?\d+(?:\.\d+)?)/lon/(-?\d+(?:\.\d+)?)/dist/(\d+(?:\.\d+)?)$")
 _EARTH_RADIUS_NM = 3440.065
+_BASE_DIR = Path(__file__).resolve().parent
+_DASHBOARD_FILE = _BASE_DIR / "web" / "index.html"
 
 # Последняя область, запрошенная ESP32. До первого запроса используется radar_config.json.
 _ACTIVE_AREA_LOCK = threading.RLock()
@@ -60,6 +63,20 @@ class _Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         path = urlsplit(self.path).path
         now = time.time()
+
+        if path in ("/", "/index.html"):
+            try:
+                body = _DASHBOARD_FILE.read_bytes()
+            except OSError:
+                self._send_json(404, {"msg": "Dashboard file not found"})
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+            return
 
         if path == "/health":
             aircraft = CACHE.snapshot()
