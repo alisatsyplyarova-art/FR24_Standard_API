@@ -50,6 +50,32 @@ class AircraftCache:
                     {
                         "id": key,
                         "callsign": None,
+                        "flight_number": None,
+                        "registration": None,
+                        "origin": None,
+                        "destination": None,
+                        "diverted_to": None,
+                        "aircraft_type": None,
+                        "squawk": None,
+                        "vertical_speed_fpm": None,
+                        "aircraft_age": None,
+                        "country_of_reg": None,
+                        "icao_address": None,
+                        "icao_hex": None,
+                        "logo_id": None,
+                        "airspace": None,
+                        "airspace_id": None,
+                        "operated_by_id": None,
+                        "squawk_availability": None,
+                        "vspeed_availability": None,
+                        "airspace_availability": None,
+                        "schedule": {},
+                        "ems_info": {},
+                        "track": None,
+                        "icon": None,
+                        "status": None,
+                        "on_ground": None,
+                        "source": None,
                         "points": OrderedDict(),
                         "last_seen": timestamp,
                     },
@@ -58,6 +84,32 @@ class AircraftCache:
                 callsign = getattr(feed, "field_11", None)
                 if callsign:
                     item["callsign"] = str(callsign)
+
+                for name in (
+                    "flight_number", "registration", "origin", "destination",
+                    "diverted_to", "aircraft_type", "squawk", "vertical_speed_fpm",
+                    "aircraft_age", "country_of_reg", "icao_address", "icao_hex",
+                    "logo_id", "airspace", "airspace_id", "operated_by_id",
+                    "squawk_availability", "vspeed_availability",
+                    "airspace_availability",
+                ):
+                    value = getattr(feed, name, None)
+                    if value is not None:
+                        item[name] = value
+
+                for name in ("schedule", "ems_info"):
+                    value = getattr(feed, name, None)
+                    if value:
+                        item[name] = dict(value)
+
+                for name, field_name in (
+                    ("track", "field_4"), ("icon", "field_7"),
+                    ("status", "field_8"), ("on_ground", "field_10"),
+                    ("source", "field_12"),
+                ):
+                    value = getattr(feed, field_name, None)
+                    if value is not None:
+                        item[name] = value
 
                 altitude_ft = getattr(feed, "field_5", None)
                 if altitude_ft is not None:
@@ -130,6 +182,32 @@ class AircraftCache:
                     {
                         "id": item["id"],
                         "callsign": item["callsign"],
+                        "flight_number": item.get("flight_number"),
+                        "registration": item.get("registration"),
+                        "origin": item.get("origin"),
+                        "destination": item.get("destination"),
+                        "diverted_to": item.get("diverted_to"),
+                        "aircraft_type": item.get("aircraft_type"),
+                        "squawk": item.get("squawk"),
+                        "vertical_speed_fpm": item.get("vertical_speed_fpm"),
+                        "aircraft_age": item.get("aircraft_age"),
+                        "country_of_reg": item.get("country_of_reg"),
+                        "icao_address": item.get("icao_address"),
+                        "icao_hex": item.get("icao_hex"),
+                        "logo_id": item.get("logo_id"),
+                        "airspace": item.get("airspace"),
+                        "airspace_id": item.get("airspace_id"),
+                        "operated_by_id": item.get("operated_by_id"),
+                        "squawk_availability": item.get("squawk_availability"),
+                        "vspeed_availability": item.get("vspeed_availability"),
+                        "airspace_availability": item.get("airspace_availability"),
+                        "schedule": item.get("schedule", {}),
+                        "ems_info": item.get("ems_info", {}),
+                        "track": item.get("track"),
+                        "icon": item.get("icon"),
+                        "status": item.get("status"),
+                        "on_ground": item.get("on_ground"),
+                        "source": item.get("source"),
                         "altitude_ft": item.get("altitude_ft"),
                         "speed_kt": item.get("speed_kt"),
                         "points": points,
