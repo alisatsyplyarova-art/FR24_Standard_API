@@ -14,6 +14,26 @@ from aircraft_cache import CACHE
 _ROUTE = re.compile(r"^/v2/lat/(-?\d+(?:\.\d+)?)/lon/(-?\d+(?:\.\d+)?)/dist/(\d+(?:\.\d+)?)$")
 _EARTH_RADIUS_NM = 3440.065
 
+# Enum values copied from the published FR24 protobuf _common.proto.
+_ICON_NAMES = {
+    0: "B738", 1: "FGTR", 2: "ASW20", 3: "C206", 4: "C303",
+    5: "LJ60", 6: "Q300", 7: "B736", 8: "FOKKER100", 9: "RJ85",
+    10: "A320", 11: "B757", 12: "B767", 13: "A3ST", 14: "MD11",
+    15: "A330", 16: "A343", 17: "A346", 18: "B777", 19: "B747",
+    20: "A380", 21: "A225", 22: "SI2", 23: "EC", 24: "BALL",
+    25: "GRND", 26: "SLEI", 27: "DRON", 28: "SAT", 29: "ISS",
+    30: "CONC",
+}
+_STATUS_NAMES = {
+    0: "NORMAL", 1: "BACKGROUND", 2: "EMERGENCY",
+    3: "NOT_AVAILABLE", 4: "LIVE",
+}
+_SOURCE_NAMES = {
+    0: "ADSB", 1: "MLAT", 2: "FLARM", 3: "FAA",
+    4: "ESTIMATED", 5: "SATELLITE", 6: "OTHER_DATA_SOURCE",
+    7: "UAT", 8: "SPIDERTRACKS", 9: "AUS", 10: "AIERON",
+}
+
 # Последняя область, запрошенная ESP32. До первого запроса используется radar_config.json.
 _ACTIVE_AREA_LOCK = threading.RLock()
 _ACTIVE_AREA: dict | None = None
@@ -115,7 +135,8 @@ class _Handler(BaseHTTPRequestHandler):
                 "aircraft_age", "country_of_reg", "icao_address", "icao_hex",
                 "logo_id", "airspace", "airspace_id", "operated_by_id",
                 "squawk_availability", "vspeed_availability",
-                "airspace_availability", "schedule", "ems_info", "icon",
+                "airspace_availability", "schedule", "ems_info",
+                "ems_availability", "timestamp_s", "icon",
                 "status", "on_ground", "source",
             ):
                 value = item.get(name)
@@ -123,6 +144,12 @@ class _Handler(BaseHTTPRequestHandler):
                     row[name] = value
             if item.get("track") is not None:
                 row["track"] = item["track"]
+            if item.get("icon") is not None:
+                row["icon_name"] = _ICON_NAMES.get(item["icon"])
+            if item.get("status") is not None:
+                row["status_name"] = _STATUS_NAMES.get(item["status"])
+            if item.get("source") is not None:
+                row["source_name"] = _SOURCE_NAMES.get(item["source"])
             if item.get("altitude_ft") is not None:
                 row["altitude_ft"] = item["altitude_ft"]
             if item.get("speed_kt") is not None:
