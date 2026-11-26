@@ -1,8 +1,10 @@
 # FR24 Standard API — техническое руководство и инструкция для разработчика
 
-> Документ описывает текущую реализацию ветки `feature/esp32-altitude-speed` репозитория [FR24_Standard_API](https://github.com/alisatsyplyarova-art/FR24_Standard_API) и интеграцию с прошивкой [Flight Radar-D & Clock 1.1.127](https://github.com/alisatsyplyarova-art/flight-radar-d-clock/tree/feature/fr24-standard-altitude-speed-1.1.127).
+> Документ описывает текущую реализацию ветки `feature/proto-schema-alignment` репозитория [FR24_Standard_API](https://github.com/alisatsyplyarova-art/FR24_Standard_API) и интеграцию с прошивкой [Flight Radar-D & Clock 1.1.127](https://github.com/alisatsyplyarova-art/flight-radar-d-clock/tree/feature/fr24-standard-altitude-speed-1.1.127).
 >
 > **Статус:** рабочая документация к текущему коду, а не утверждение, что каждое необязательное поле уже подтверждено на реальном потоке FR24. Протокольные номера и типы вложенных полей необходимо сверять с реальными обезличенными захватами и официально/независимо подтверждённой схемой. Неизвестные и недоступные поля должны оставаться отсутствующими или `null`.
+
+> **Ветка аудита схемы:** `feature/proto-schema-alignment`, создана от `feature/esp32-altitude-speed`. Раздел 17 фиксирует результаты сверки с опубликованными `.proto`-файлами проекта abc8747/fr24 и изменения, внесённые в этой ветке.
 
 ## 1. Что это за система
 
@@ -53,7 +55,7 @@ AircraftCache (последние позиции и сведения)
 ### Сервер
 
 - Репозиторий: [alisatsyplyarova-art/FR24_Standard_API](https://github.com/alisatsyplyarova-art/FR24_Standard_API)
-- Рабочая ветка: [feature/esp32-altitude-speed](https://github.com/alisatsyplyarova-art/FR24_Standard_API/tree/feature/esp32-altitude-speed)
+- Рабочая ветка: [feature/proto-schema-alignment](https://github.com/alisatsyplyarova-art/FR24_Standard_API/tree/feature/proto-schema-alignment)
 - В этой ветке реализованы динамическая область радара и расширение декодирования полей.
 - Ветка не должна автоматически сливаться в `main`.
 
@@ -382,7 +384,7 @@ AircraftCache (последние позиции и сведения)
 ```powershell
 git clone https://github.com/alisatsyplyarova-art/FR24_Standard_API.git
 cd FR24_Standard_API
-git switch feature/esp32-altitude-speed
+git switch feature/proto-schema-alignment
 py -3.11 -m venv venv
 .\venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
@@ -507,7 +509,8 @@ Invoke-RestMethod "http://127.0.0.1:8765/v2/lat/54.91/lon/82.33/dist/50"
 
 Перед слиянием ветки или передачей прошивки в эксплуатацию:
 
-- [ ] Python-модули проходят `python -m compileall .`.
+- [ ] Python-модули проходят `python -m compileall .
+python -m unittest discover -p 'test_*.py' -v`.
 - [ ] Есть тесты на чтение protobuf VARINT, fixed32, LEN и ошибочные/обрезанные данные.
 - [ ] Есть тест на декодирование Feed с координатами и временной меткой.
 - [ ] Есть тест на PositionBuffer: координаты и время совпадают с эталонным примером.
@@ -549,7 +552,7 @@ python -m compileall .
 
 1. Сначала изучи этот документ целиком: `docs/FR24_STANDARD_API_TECHNICAL_GUIDE_RU.md`.
 2. Не переписывай проект с нуля. Сохраняй текущую архитектуру, совместимость API и существующую обработку PositionBuffer.
-3. Базовая серверная ветка для этой задачи: `feature/esp32-altitude-speed`.
+3. Базовая серверная ветка для этой задачи: `feature/proto-schema-alignment`.
 4. Прошивка должна оставаться на базе версии **1.1.127**. Не подменяй её другой версией.
 5. Не сливай ветки в `main` без отдельного разрешения владельца.
 6. Не меняй код, пока не подготовишь краткий план файлов и изменений и не покажешь найденные риски.
