@@ -109,6 +109,10 @@ class _Handler(BaseHTTPRequestHandler):
             }
             if item.get("callsign"):
                 row["flight"] = item["callsign"]
+            if item.get("altitude_ft") is not None:
+                row["altitude_ft"] = item["altitude_ft"]
+            if item.get("speed_kt") is not None:
+                row["speed_kt"] = item["speed_kt"]
             if item.get("heading") is not None:
                 row["track"] = round(item["heading"], 1)
             selected.append(row)
