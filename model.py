@@ -71,7 +71,6 @@ class Feed:
     field_7: int | None = None
     field_8: int | None = None
     field_10: bool | None = None
-    field_6: int | None = None
     field_9: int | None = None
     field_11: str | None = None
     field_12: int | None = None
