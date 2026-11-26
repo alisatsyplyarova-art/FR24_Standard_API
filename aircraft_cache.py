@@ -5,6 +5,20 @@ import math
 import threading
 import time
 from collections import OrderedDict
+
+
+def _feed_varint(feed, field_number: int):
+    """Read a protobuf varint retained in Feed.all_fields."""
+    fields = getattr(feed, "all_fields", {}) or {}
+    for field in fields.get(field_number, []):
+        if getattr(field, "wire_type", None) == 0:
+            value = getattr(field, "value", None)
+            if value is not None:
+                try:
+                    return int(value)
+                except (TypeError, ValueError, OverflowError):
+                    return None
+    return None
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
@@ -58,6 +72,15 @@ class AircraftCache:
                 callsign = getattr(feed, "field_11", None)
                 if callsign:
                     item["callsign"] = str(callsign)
+
+                # FR24 protobuf fields 5 and 6 were checked against live captures:
+                # altitude in feet and groundspeed in knots, respectively.
+                altitude_ft = _feed_varint(feed, 5)
+                speed_kt = _feed_varint(feed, 6)
+                if altitude_ft is not None:
+                    item["altitude_ft"] = altitude_ft
+                if speed_kt is not None:
+                    item["speed_kt"] = speed_kt
 
                 point = {
                     "latitude": latitude,
@@ -116,6 +139,8 @@ class AircraftCache:
                     {
                         "id": item["id"],
                         "callsign": item["callsign"],
+                        "altitude_ft": item.get("altitude_ft"),
+                        "speed_kt": item.get("speed_kt"),
                         "points": points,
                         "current": points[-1],
                         "heading": heading,
