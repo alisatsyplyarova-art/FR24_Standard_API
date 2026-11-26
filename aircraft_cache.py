@@ -5,6 +5,7 @@ import math
 import threading
 import time
 from collections import OrderedDict
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
 def _feed_varint(feed, field_number: int):
@@ -19,8 +20,6 @@ def _feed_varint(feed, field_number: int):
                 except (TypeError, ValueError, OverflowError):
                     return None
     return None
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-
 
 class AircraftCache:
     """Bounded in-memory cache of the latest positions received from FR24."""
