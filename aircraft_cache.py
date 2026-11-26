@@ -71,6 +71,8 @@ class AircraftCache:
                         "airspace_availability": None,
                         "schedule": {},
                         "ems_info": {},
+                        "ems_availability": {},
+                        "timestamp_s": None,
                         "track": None,
                         "icon": None,
                         "status": None,
@@ -97,7 +99,11 @@ class AircraftCache:
                     if value is not None:
                         item[name] = value
 
-                for name in ("schedule", "ems_info"):
+                timestamp_s = getattr(feed, "field_9", None)
+                if timestamp_s is not None:
+                    item["timestamp_s"] = int(timestamp_s)
+
+                for name in ("schedule", "ems_info", "ems_availability"):
                     value = getattr(feed, name, None)
                     if value:
                         item[name] = dict(value)
@@ -203,6 +209,8 @@ class AircraftCache:
                         "airspace_availability": item.get("airspace_availability"),
                         "schedule": item.get("schedule", {}),
                         "ems_info": item.get("ems_info", {}),
+                        "ems_availability": item.get("ems_availability", {}),
+                        "timestamp_s": item.get("timestamp_s"),
                         "track": item.get("track"),
                         "icon": item.get("icon"),
                         "status": item.get("status"),
