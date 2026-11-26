@@ -59,6 +59,20 @@ class AircraftCache:
                 if callsign:
                     item["callsign"] = str(callsign)
 
+                altitude_ft = getattr(feed, "field_5", None)
+                if altitude_ft is not None:
+                    try:
+                        item["altitude_ft"] = int(altitude_ft)
+                    except (TypeError, ValueError, OverflowError):
+                        pass
+
+                speed_kt = getattr(feed, "field_6", None)
+                if speed_kt is not None:
+                    try:
+                        item["speed_kt"] = int(speed_kt)
+                    except (TypeError, ValueError, OverflowError):
+                        pass
+
                 point = {
                     "latitude": latitude,
                     "longitude": longitude,
@@ -116,6 +130,8 @@ class AircraftCache:
                     {
                         "id": item["id"],
                         "callsign": item["callsign"],
+                        "altitude_ft": item.get("altitude_ft"),
+                        "speed_kt": item.get("speed_kt"),
                         "points": points,
                         "current": points[-1],
                         "heading": heading,
