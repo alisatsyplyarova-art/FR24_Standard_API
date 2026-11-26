@@ -254,7 +254,7 @@ def _decode_extra_flight_info(data: bytes) -> dict:
         "logo_id": first_varint(extra, 10),
         "airspace": first_varint(extra, 11),
         "ems_info": {
-            name: first_varint(ems, number)
+            name: int64_decode(first_varint(ems, number))
             for number, name in (
                 (1, "qnh"), (2, "amcp"), (3, "afms"), (4, "oat"),
                 (5, "ias"), (6, "tas"), (7, "mach"), (8, "agps"),
