@@ -21,6 +21,7 @@ from protobuf_parser import (
     first_varint,
     first_fixed32,
     int64_decode,
+    int32_decode,
 )
 
 # Подтверждено на fr24_analysis.json (90 точных совпадений, ошибка <= 1e-5 град):
@@ -52,7 +53,7 @@ def decode_position_sample(
     fields = _all_fields(data)
 
     sample = PositionSample(
-        field_1=first_varint(fields, 1),
+        field_1=_first_int32(fields, 1),
         field_2=first_varint(fields, 2),
         field_3=first_varint(fields, 3),
         all_fields=fields,
@@ -214,6 +215,11 @@ def _nested_string(fields, number):
     return _first_string(fields, number)
 
 
+def _first_int32(fields, number):
+    value = first_varint(fields, number)
+    return int32_decode(value) if value is not None else None
+
+
 def _decode_extra_flight_info(data: bytes) -> dict:
     try:
         extra = _all_fields(data)
@@ -223,6 +229,7 @@ def _decode_extra_flight_info(data: bytes) -> dict:
     route = _nested_fields(extra, 3)
     schedule = _nested_fields(extra, 9)
     ems = _nested_fields(extra, 12)
+    ems_availability = _nested_fields(extra, 13)
 
     icao_address = first_varint(extra, 14)
     icao_hex = (
@@ -238,23 +245,23 @@ def _decode_extra_flight_info(data: bytes) -> dict:
         "destination": _nested_string(route, 2),
         "diverted_to": _nested_string(route, 3),
         "aircraft_type": _nested_string(extra, 4),
-        "squawk": int64_decode(first_varint(extra, 5)) if first_varint(extra, 5) is not None else None,
-        "vertical_speed_fpm": int64_decode(first_varint(extra, 6)) if first_varint(extra, 6) is not None else None,
+        "squawk": _first_int32(extra, 5),
+        "vertical_speed_fpm": _first_int32(extra, 6),
         "aircraft_age": _nested_string(extra, 7),
-        "country_of_reg": first_varint(extra, 8),
+        "country_of_reg": _first_int32(extra, 8),
         "schedule": {
-            "std": first_varint(schedule, 1),
-            "etd": first_varint(schedule, 2),
-            "atd": first_varint(schedule, 3),
-            "sta": first_varint(schedule, 4),
-            "eta": first_varint(schedule, 5),
-            "ata": first_varint(schedule, 6),
-            "progress_pct": first_varint(schedule, 7),
+            "std": _first_int32(schedule, 1),
+            "etd": _first_int32(schedule, 2),
+            "atd": _first_int32(schedule, 3),
+            "sta": _first_int32(schedule, 4),
+            "eta": _first_int32(schedule, 5),
+            "ata": _first_int32(schedule, 6),
+            "progress_pct": _first_int32(schedule, 7),
         },
-        "logo_id": first_varint(extra, 10),
-        "airspace": first_varint(extra, 11),
+        "logo_id": _first_int32(extra, 10),
+        "airspace": _first_int32(extra, 11),
         "ems_info": {
-            name: int64_decode(first_varint(ems, number))
+            name: _first_int32(ems, number)
             for number, name in (
                 (1, "qnh"), (2, "amcp"), (3, "afms"), (4, "oat"),
                 (5, "ias"), (6, "tas"), (7, "mach"), (8, "agps"),
@@ -262,6 +269,16 @@ def _decode_extra_flight_info(data: bytes) -> dict:
                 (12, "wind_speed"), (13, "rs"),
             )
             if first_varint(ems, number) is not None
+        },
+        "ems_availability": {
+            name: bool(value)
+            for number, name in (
+                (1, "qnh"), (2, "amcp"), (3, "afms"), (4, "oat"),
+                (5, "ias"), (6, "tas"), (7, "mach"), (8, "agps"),
+                (9, "agpsdiff"), (10, "apflags"), (11, "wind_dir"),
+                (12, "wind_speed"), (13, "rs"),
+            )
+            if (value := first_varint(ems_availability, number)) is not None
         },
         "icao_address": icao_address,
         "icao_hex": icao_hex,
@@ -289,12 +306,12 @@ def decode_feed(
         field_1=first_varint(fields, 1),
         field_2=first_fixed32(fields, 2),
         field_3=first_fixed32(fields, 3),
-        field_4=first_varint(fields, 4),
-        field_5=first_varint(fields, 5),
-        field_6=first_varint(fields, 6),
+        field_4=_first_int32(fields, 4),
+        field_5=_first_int32(fields, 5),
+        field_6=_first_int32(fields, 6),
         field_7=first_varint(fields, 7),
         field_8=first_varint(fields, 8),
-        field_9=first_varint(fields, 9),
+        field_9=_first_int32(fields, 9),
         field_10=bool(first_varint(fields, 10)) if first_varint(fields, 10) is not None else None,
         field_11=_first_string(fields, 11),
         field_12=first_varint(fields, 12),
