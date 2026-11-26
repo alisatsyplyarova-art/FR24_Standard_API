@@ -223,6 +223,7 @@ def _decode_extra_flight_info(data: bytes) -> dict:
     route = _nested_fields(extra, 3)
     schedule = _nested_fields(extra, 9)
     ems = _nested_fields(extra, 12)
+    ems_availability = _nested_fields(extra, 13)
 
     icao_address = first_varint(extra, 14)
     icao_hex = (
@@ -262,6 +263,16 @@ def _decode_extra_flight_info(data: bytes) -> dict:
                 (12, "wind_speed"), (13, "rs"),
             )
             if first_varint(ems, number) is not None
+        },
+        "ems_availability": {
+            name: bool(first_varint(ems_availability, number))
+            for number, name in (
+                (1, "qnh"), (2, "amcp"), (3, "afms"), (4, "oat"),
+                (5, "ias"), (6, "tas"), (7, "mach"), (8, "agps"),
+                (9, "agpsdiff"), (10, "apflags"), (11, "wind_dir"),
+                (12, "wind_speed"), (13, "rs"),
+            )
+            if first_varint(ems_availability, number) is not None
         },
         "icao_address": icao_address,
         "icao_hex": icao_hex,
@@ -357,10 +368,35 @@ def decode_feed_response(
     for item in fields.get(1, []):
         if item.wire_type != WT_LEN:
             continue
+        response.feeds.append(decode_feed(item.raw_value, source, context))
 
-        response.feeds.append(
-            decode_feed(item.raw_value, source, context)
-        )
+    # Selected flights may carry ExtraFlightInfo absent from the general feed.
+    for item in fields.get(3, []):
+        if item.wire_type != WT_LEN:
+            continue
+        response.selected_feeds.append(decode_feed(item.raw_value, source, context))
+
+    response.server_time_ms = first_varint(fields, 4)
+
+    # LiveFeedResponse.field_2 -> Stats.total_list -> SourceStats.
+    for stats_item in fields.get(2, []):
+        if stats_item.wire_type != WT_LEN:
+            continue
+        try:
+            stats_fields = _all_fields(stats_item.raw_value)
+        except (ValueError, TypeError):
+            continue
+        for source_item in stats_fields.get(1, []):
+            if source_item.wire_type != WT_LEN:
+                continue
+            try:
+                source_fields = _all_fields(source_item.raw_value)
+            except (ValueError, TypeError):
+                continue
+            source_code = first_varint(source_fields, 1)
+            count = first_varint(source_fields, 2)
+            if source_code is not None and count is not None:
+                response.stats.append({"source": source_code, "count": count})
 
     for index, item in enumerate(fields.get(2, [])):
         if item.wire_type == WT_LEN:
@@ -375,7 +411,7 @@ def decode_feed_response(
             )
 
     for number, items in fields.items():
-        if number in (1, 2):
+        if number in (1, 2, 3):
             continue
 
         for index, item in enumerate(items):
