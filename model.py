@@ -65,6 +65,8 @@ class Feed:
     field_1: int | None = None
     field_2: float | None = None
     field_3: float | None = None
+    field_5: int | None = None
+    field_6: int | None = None
     field_9: int | None = None
     field_11: str | None = None
     field_12: int | None = None
