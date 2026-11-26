@@ -28,7 +28,8 @@ from protobuf_parser import (
 #   lat  = Feed.field_2 - sample.field_1 * 1e-5
 #   lon  = Feed.field_3 - sample.field_2 * 1e-5
 #   time = Feed.field_15 - sample.field_3   (миллисекунды)
-# field_1 и field_2 кодируются как int64 (two's complement), не ZigZag.
+# По опубликованной .proto-схеме delta_lat/delta_lon — int32 VARINT,
+# отрицательные значения передаются с sign extension (не ZigZag).
 COORD_SCALE = 1e-5
 
 
