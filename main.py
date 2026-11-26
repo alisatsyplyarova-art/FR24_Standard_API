@@ -160,6 +160,7 @@ def decode_response(data: bytes, request_index: int) -> tuple[list, list[str]]:
         try:
             result = decode_feed_response(frame.payload, source, AnalysisContext())
             feeds.extend(result.feeds)
+            feeds.extend(result.selected_feeds)
         except Exception as exc:
             errors.append(f"frame {frame_index}: {type(exc).__name__}: {exc}")
 
