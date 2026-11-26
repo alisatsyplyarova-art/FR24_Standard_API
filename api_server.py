@@ -83,8 +83,9 @@ class _Handler(BaseHTTPRequestHandler):
             return
 
         lat, lon, radius_nm = map(float, match.groups())
-        if not (-90 <= lat <= 90 and -180 <= lon <= 180 and 0 < radius_nm <= 20000):
-            self._send_json(400, {"msg": "Invalid latitude, longitude or distance"})
+        # Прошивка 1.1.127 ограничивает запрос радиусом 500 NM.
+        if not (-90 <= lat <= 90 and -180 <= lon <= 180 and 0 < radius_nm <= 500):
+            self._send_json(400, {"msg": "Invalid latitude, longitude or distance (maximum 500 NM)"})
             return
 
         # Область запроса ESP32 становится областью следующего опроса LiveFeed.
