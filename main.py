@@ -145,6 +145,8 @@ def decode_response(data: bytes, request_index: int) -> tuple[list, list[str]]:
     frames = decode_grpc_web_body(data)
     feeds = []
     errors = []
+    source_stats = []
+    server_time_ms = None
 
     for frame_index, frame in enumerate(frames):
         if not frame.is_data:
@@ -161,10 +163,13 @@ def decode_response(data: bytes, request_index: int) -> tuple[list, list[str]]:
             result = decode_feed_response(frame.payload, source, AnalysisContext())
             feeds.extend(result.feeds)
             feeds.extend(result.selected_feeds)
+            source_stats = result.stats or source_stats
+            if result.server_time_ms is not None:
+                server_time_ms = result.server_time_ms
         except Exception as exc:
             errors.append(f"frame {frame_index}: {type(exc).__name__}: {exc}")
 
-    return feeds, errors
+    return feeds, errors, source_stats, server_time_ms
 
 
 def main() -> None:
@@ -216,8 +221,8 @@ def main() -> None:
                         stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
                         (CAPTURE_DIR / f"live_{stamp}.bin").write_bytes(response.content)
 
-                    feeds, errors = decode_response(response.content, request_index)
-                    CACHE.update(feeds)
+                    feeds, errors, source_stats, server_time_ms = decode_response(response.content, request_index)
+                    CACHE.update(feeds, source_stats=source_stats, server_time_ms=server_time_ms)
                     logging.info("Request #%d: decoded %d feeds; cache currently %d aircraft", request_index, len(feeds), len(CACHE.snapshot()))
                     for error in errors[:5]:
                         logging.warning("Decode warning: %s", error)
