@@ -9,6 +9,8 @@
 
 Локальный сборщик данных Flightradar24 LiveFeed с HTTP API.
 
+Текущая ветка аудита protobuf: `feature/proto-schema-alignment`. В ней сверены типы LiveFeed и ExtraFlightInfo с опубликованными `.proto`-описаниями; добавлена отдельная обработка EMSAvailability и signed int32. Изменения ещё требуют запуска тестов и проверки на реальном обезличенном потоке.
+
 ## Возможности
 
 - Опрос FR24 каждые 10 секунд.
