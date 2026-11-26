@@ -1,0 +1,8 @@
+﻿venv/
+logs/
+__pycache__/
+*.py[cod]
+*.har
+radar_config.json
+.env
+.env.*
