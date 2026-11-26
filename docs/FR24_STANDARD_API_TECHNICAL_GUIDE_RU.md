@@ -90,7 +90,7 @@ AircraftCache (последние позиции и сведения)
 | `main.py` | Точка входа, загрузка конфигурации и HAR, HTTP-запросы к FR24, цикл опроса |
 | `grpc_web.py` | Разбор транспортных кадров gRPC-Web |
 | `protobuf_parser.py` | Низкоуровневое чтение protobuf wire format |
-| `feed_decoder.py` | Разбор FeedResponse, Feed, PositionBuffer и ExtraFlightInfo |
+| `feed_decoder.py` | Разбор FeedResponse (обычные и выбранные рейсы, Stats), Feed, PositionBuffer, ExtraFlightInfo, EMSInfo и EMSAvailability |
 | `len_analyzer.py` | Рекурсивный диагностический анализ вложенных LEN-полей |
 | `analysis_context.py` | Ограничения глубины, количества узлов и размера анализируемых сообщений |
 | `model.py` | Структуры данных декодера |
@@ -170,20 +170,43 @@ AircraftCache (последние позиции и сведения)
 | 1 | `field_1` | внутренний FR24 ID | Это НЕ ICAO HEX |
 | 2 | `field_2` | latitude | читается как fixed32 float |
 | 3 | `field_3` | longitude | читается как fixed32 float |
-| 4 | `field_4` | track | VARINT; единицы/диапазон проверить на реальном образце |
-| 5 | `field_5` | altitude_ft | VARINT; передаётся в кэш |
-| 6 | `field_6` | speed_kt | VARINT; передаётся в кэш |
-| 7 | `field_7` | icon | VARINT/enum; значение не является готовой картинкой |
-| 8 | `field_8` | status | VARINT/enum; нужна таблица enum |
-| 9 | `field_9` | timestamp | секунды по используемой схеме; не путать с field 15 |
-| 10 | `field_10` | on_ground | преобразуется в bool |
-| 11 | `field_11` | callsign | LEN, строка |
-| 12 | `field_12` | source | VARINT/enum |
+| 4 | `field_4` | track | int32, истинный путевой угол от севера по часовой стрелке, градусы |
+| 5 | `field_5` | altitude_ft | int32, барометрическая высота, футы |
+| 6 | `field_6` | speed_kt | int32, путевая скорость, узлы |
+| 7 | `field_7` | icon | enum Icon; код типа значка |
+| 8 | `field_8` | status | enum Status |
+| 9 | `field_9` | timestamp | int32, Unix timestamp в секундах |
+| 10 | `field_10` | on_ground | bool |
+| 11 | `field_11` | callsign | string |
+| 12 | `field_12` | source | enum DataSource |
 | 13 | `ExtraFlightInfo` | дополнительные сведения | вложенное LEN-сообщение |
 | 14 | `PositionBuffer` | история координат | вложенное LEN-сообщение |
-| 15 | `field_15` | timestamp_ms | используется при построении временных меток |
+| 15 | `field_15` | timestamp_ms | uint64, Unix timestamp в миллисекундах |
 
-Таблица отражает текущую реализацию и известную для проекта схему. Перед изменением декодера перепроверь wire type и семантику на сохранённом реальном образце. Поля 9 и 15 — разные временные представления, их нельзя взаимозаменять.
+Таблица сверена с независимым открытым описанием protobuf в igolaizola/fr24, файлом pkg/proto/_common.proto. Поля 9 и 15 — разные временные представления, их нельзя взаимозаменять. Сверка схемы не гарантирует заполненность поля в каждом конкретном ответе.
+
+### FeedResponse — контейнер ответа LiveFeed
+
+По независимой схеме pkg/proto/_live_feed.proto структура ответа содержит:
+
+| Поле | Тип | Значение | Обработка в нашем сервере |
+|---:|---|---|---|
+| 1 | repeated Flight | обычный список самолётов | декодируется и поступает в кэш |
+| 2 | Stats | статистика по источникам | декодируется в FeedResponse.stats |
+| 3 | repeated Flight | отдельно выбранные самолёты | декодируется и также поступает в кэш |
+| 4 | uint64 | server_time_ms, время сервера в миллисекундах | сохраняется в FeedResponse.server_time_ms |
+
+Поле 3 важно: выбранный самолёт может содержать ExtraFlightInfo, которого нет у записи того же самолёта в общем списке. Поэтому сборщик объединяет обычные и выбранные записи по внутреннему FR24 ID. Это не означает, что все дополнительные поля доступны для любого самолёта.
+
+### Enum в Feed
+
+Схема определяет следующие enum:
+
+- DataSource: ADSB=0, MLAT=1, FLARM=2, FAA=3, ESTIMATED=4, SATELLITE=5, OTHER_DATA_SOURCE=6, UAT=7, SPIDERTRACKS=8, AUS=9.
+- Status: NORMAL=0, BACKGROUND=1, EMERGENCY=2, NOT_AVAILABLE=3, LIVE=4.
+- Icon: числовые коды типов самолётов/значков, от B738=0 до CONC=30 в опубликованной версии схемы.
+
+REST API сохраняет числовые коды icon, status и source, не подменяя их догадочными текстовыми названиями. Полная таблица Icon находится в исходном .proto.
 
 ### История координат — PositionBuffer
 
@@ -222,7 +245,8 @@ AircraftCache (последние позиции и сведения)
 | 9 | `schedule` | вложенное расписание | вложенная структура |
 | 10 | `logo_id` | идентификатор логотипа | не изображение |
 | 11 | `airspace` | атрибут воздушного пространства | enum/код проверить |
-| 12 | `ems_info` | вложенная телеметрия | вложенная структура |
+| 12 | `ems_info` | вложенная телеметрия EMSInfo | вложенная структура |
+| 13 | `ems_availability` | отдельное сообщение EMSAvailability | вложенная структура с bool-флагами |
 | 14 | `icao_address` | 24-битный ICAO address | если поле действительно присутствует |
 | 15 | `operated_by_id` | ID оператора | код, не название |
 | 16 | `squawk_availability` | флаг доступности squawk | bool |
@@ -230,7 +254,7 @@ AircraftCache (последние позиции и сведения)
 | 18 | `airspace_availability` | флаг доступности airspace | bool |
 | 19 | `airspace_id` | ID/строковый атрибут airspace | проверить тип |
 
-Текущий код также пробует прочитать в Route поля 1–3 как origin, destination и diverted_to. В Schedule пробует прочитать поля 1–7 как STD, ETD, ATD, STA, ETA, ATA и progress_pct. В EMS пробует извлечь поля 1–13 (QNH, AMCP, AFMS, OAT, IAS, TAS, Mach, GPS altitude и другие показатели).
+Текущий код также пробует прочитать в Route поля 1–3 как origin, destination и diverted_to. В Schedule пробует прочитать поля 1–7 как STD, ETD, ATD, STA, ETA, ATA и progress_pct. В EMS извлекает поля 1–13 (QNH, AMCP, AFMS, OAT, IAS, TAS, Mach, GPS altitude и другие показатели). Отдельное EMSAvailability в поле 13 извлекает 13 bool-флагов доступности: qnh, amcp, afms, oat, ias, tas, mach, agps, agpsdiff, apflags, wind_dir, wind_speed и rs. Эти флаги не являются самими измерениями.
 
 **Это кандидаты декодирования, а не гарантия присутствия или правильности каждого значения.** До подтверждения реальным захватом не использовать их для критических решений и не трактовать кодовые поля как человекочитаемые подписи.
 
@@ -651,3 +675,14 @@ python -m compileall .
 ---
 
 **Главное правило проекта:** сначала докажи структуру и значение поля на реальном обезличенном образце, затем добавляй его в декодер, кэш и API. Не путай внутренний ID FR24 с ICAO, не публикуй HAR и не заявляй о проверке, которую фактически не выполнял.
+
+
+## 13. Независимые реализации и источники схемы
+
+При аудите сравнивались только независимые проекты и открытые реализации, не официальный FR24 API:
+
+- igolaizola/fr24 — https://github.com/igolaizola/fr24 — Go-клиент/CLI, использует gRPC-Web и содержит protobuf-схемы в pkg/proto. Для сверки использованы _common.proto и _live_feed.proto. Это клиент и CLI, а не готовый универсальный REST-сервер.
+- AlexandrErohin/home-assistant-flightradar24 — https://github.com/AlexandrErohin/home-assistant-flightradar24 — интеграция Home Assistant, использует отдельную библиотеку FlightRadarAPI и HTTP-источники; полезна как пример нормализации атрибутов, трекинга, истории и обработки ограничений, но не является реализацией нашего gRPC-Web декодера.
+- t7spotter/liveflights — https://github.com/t7spotter/liveflights — Flask-приложение, которое предоставляет REST/JSON поверх нескольких upstream HTTP endpoints FR24. Это пример REST-обёртки, но не сервер для приёма нашего LiveFeed protobuf потока.
+
+В текущем проекте применены подтверждённые protobuf-структуры и идеи обработки выбранных рейсов/дополнительных атрибутов. Код чужих проектов целиком не копировался. Схема из открытого репозитория — независимое техническое описание, а не официальная спецификация FR24; при изменениях протокола её нужно повторно сверять с живыми обезличенными payload.
