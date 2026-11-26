@@ -196,10 +196,10 @@ def main() -> None:
                     timeout=TIMEOUT_SECONDS,
                 )
                 logging.info(
-                "Request #%d: HTTP %d, %d bytes; radar %.5f, %.5f / %.1f km",
-                request_index, response.status_code, len(response.content),
-                active_area["latitude"], active_area["longitude"], active_area["radius_km"],
-            )
+                    "Request #%d: HTTP %d, %d bytes; radar %.5f, %.5f / %.1f km",
+                    request_index, response.status_code, len(response.content),
+                    active_area["latitude"], active_area["longitude"], active_area["radius_km"],
+                )
 
                 if response.status_code in (401, 403):
                     logging.error("FR24 returned HTTP %d; stopping collector (access denied)", response.status_code)
