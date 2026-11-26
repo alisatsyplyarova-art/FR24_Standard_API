@@ -210,6 +210,8 @@ def decode_feed(
         field_1=first_varint(fields, 1),
         field_2=first_fixed32(fields, 2),
         field_3=first_fixed32(fields, 3),
+        field_5=first_varint(fields, 5),
+        field_6=first_varint(fields, 6),
         field_9=first_varint(fields, 9),
         field_11=_first_string(fields, 11),
         field_12=first_varint(fields, 12),
