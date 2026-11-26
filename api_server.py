@@ -109,6 +109,20 @@ class _Handler(BaseHTTPRequestHandler):
             }
             if item.get("callsign"):
                 row["flight"] = item["callsign"]
+            for name in (
+                "flight_number", "registration", "origin", "destination",
+                "diverted_to", "aircraft_type", "squawk", "vertical_speed_fpm",
+                "aircraft_age", "country_of_reg", "icao_address", "icao_hex",
+                "logo_id", "airspace", "airspace_id", "operated_by_id",
+                "squawk_availability", "vspeed_availability",
+                "airspace_availability", "schedule", "ems_info", "icon",
+                "status", "on_ground", "source",
+            ):
+                value = item.get(name)
+                if value is not None and value != {}:
+                    row[name] = value
+            if item.get("track") is not None:
+                row["track"] = item["track"]
             if item.get("altitude_ft") is not None:
                 row["altitude_ft"] = item["altitude_ft"]
             if item.get("speed_kt") is not None:
