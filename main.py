@@ -12,7 +12,7 @@ import requests
 
 from aircraft_cache import CACHE
 from analysis_context import AnalysisContext
-from api_server import start_api_server
+from api_server import get_active_area, start_api_server
 from feed_decoder import decode_feed_response
 from grpc_web import decode_grpc_web_body
 from model import SourceRef
@@ -72,8 +72,10 @@ def load_config() -> dict:
     return {"latitude": lat, "longitude": lon, "radius_km": radius_km}
 
 
-def build_request_body(template: bytes) -> bytes:
-    config = load_config()
+def build_request_body(template: bytes, config: dict | None = None) -> bytes:
+    # Если ESP32 уже присылал запрос, используем его центр и радиус.
+    # radar_config.json остаётся только начальной областью до первого запроса.
+    config = config or load_config()
     lat = config["latitude"]
     lon = config["longitude"]
     radius_km = config["radius_km"]
@@ -186,13 +188,18 @@ def main() -> None:
             started = time.monotonic()
             request_index += 1
             try:
+                active_area = get_active_area(config)
                 response = session.post(
                     URL,
-                    data=build_request_body(template),
+                    data=build_request_body(template, active_area),
                     headers=headers,
                     timeout=TIMEOUT_SECONDS,
                 )
-                logging.info("Request #%d: HTTP %d, %d bytes", request_index, response.status_code, len(response.content))
+                logging.info(
+                "Request #%d: HTTP %d, %d bytes; radar %.5f, %.5f / %.1f km",
+                request_index, response.status_code, len(response.content),
+                active_area["latitude"], active_area["longitude"], active_area["radius_km"],
+            )
 
                 if response.status_code in (401, 403):
                     logging.error("FR24 returned HTTP %d; stopping collector (access denied)", response.status_code)
