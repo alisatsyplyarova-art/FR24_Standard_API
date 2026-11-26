@@ -115,7 +115,7 @@ class _Handler(BaseHTTPRequestHandler):
                 "aircraft_age", "country_of_reg", "icao_address", "icao_hex",
                 "logo_id", "airspace", "airspace_id", "operated_by_id",
                 "squawk_availability", "vspeed_availability",
-                "airspace_availability", "schedule", "ems_info", "icon",
+                "airspace_availability", "schedule", "ems_info", "ems_availability", "icon",
                 "status", "on_ground", "source",
             ):
                 value = item.get(name)
