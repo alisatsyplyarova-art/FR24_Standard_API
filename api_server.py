@@ -14,6 +14,28 @@ from aircraft_cache import CACHE
 _ROUTE = re.compile(r"^/v2/lat/(-?\d+(?:\.\d+)?)/lon/(-?\d+(?:\.\d+)?)/dist/(\d+(?:\.\d+)?)$")
 _EARTH_RADIUS_NM = 3440.065
 
+# Последняя область, запрошенная ESP32. До первого запроса используется radar_config.json.
+_ACTIVE_AREA_LOCK = threading.RLock()
+_ACTIVE_AREA: dict | None = None
+
+
+def set_active_area(latitude: float, longitude: float, radius_nm: float) -> None:
+    global _ACTIVE_AREA
+    with _ACTIVE_AREA_LOCK:
+        _ACTIVE_AREA = {
+            "latitude": latitude,
+            "longitude": longitude,
+            "radius_km": radius_nm * 1.852,
+            "radius_nm": radius_nm,
+        }
+
+
+def get_active_area(default: dict | None = None) -> dict | None:
+    with _ACTIVE_AREA_LOCK:
+        if _ACTIVE_AREA is not None:
+            return dict(_ACTIVE_AREA)
+    return dict(default) if default is not None else None
+
 
 def _distance_nm(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     p1, p2 = math.radians(lat1), math.radians(lat2)
@@ -41,7 +63,13 @@ class _Handler(BaseHTTPRequestHandler):
 
         if path == "/health":
             aircraft = CACHE.snapshot()
-            self._send_json(200, {"status": "ok", "aircraft": len(aircraft), "now": int(now * 1000)})
+            area = get_active_area()
+            self._send_json(200, {
+                "status": "ok",
+                "aircraft": len(aircraft),
+                "active_area": area,
+                "now": int(now * 1000),
+            })
             return
 
         if path == "/aircraft":
@@ -58,6 +86,10 @@ class _Handler(BaseHTTPRequestHandler):
         if not (-90 <= lat <= 90 and -180 <= lon <= 180 and 0 < radius_nm <= 20000):
             self._send_json(400, {"msg": "Invalid latitude, longitude or distance"})
             return
+
+        # Область запроса ESP32 становится областью следующего опроса LiveFeed.
+        # Так сервер не ограничивается координатами из radar_config.json.
+        set_active_area(lat, lon, radius_nm)
 
         selected = []
         for item in CACHE.snapshot():
