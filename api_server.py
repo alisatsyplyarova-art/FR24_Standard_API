@@ -64,10 +64,13 @@ class _Handler(BaseHTTPRequestHandler):
         if path == "/health":
             aircraft = CACHE.snapshot()
             area = get_active_area()
+            metadata = CACHE.metadata_snapshot()
             self._send_json(200, {
                 "status": "ok",
                 "aircraft": len(aircraft),
                 "active_area": area,
+                "source_stats": metadata["source_stats"],
+                "feed_server_time_ms": metadata["feed_server_time_ms"],
                 "now": int(now * 1000),
             })
             return
