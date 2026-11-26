@@ -203,3 +203,9 @@ def int64_decode(value: int) -> int:
     """Интерпретирует uint64 как signed int64."""
     value &= UINT64_MAX
     return value - (1 << 64) if value > INT64_MAX else value
+
+
+def int32_decode(value: int) -> int:
+    """Интерпретирует protobuf int32 VARINT с учётом sign extension."""
+    value &= 0xFFFFFFFF
+    return value - (1 << 32) if value >= (1 << 31) else value
