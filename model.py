@@ -97,6 +97,7 @@ class Feed:
     airspace_availability: bool | None = None
     schedule: dict[str, int | None] = field(default_factory=dict)
     ems_info: dict[str, int | None] = field(default_factory=dict)
+    ems_availability: dict[str, bool] = field(default_factory=dict)
 
     histories: list[PositionHistory] = field(default_factory=list)
     track: list[TrackPoint] = field(default_factory=list)
@@ -109,6 +110,9 @@ class Feed:
 @dataclass
 class FeedResponse:
     feeds: list[Feed] = field(default_factory=list)
+    selected_feeds: list[Feed] = field(default_factory=list)
+    stats: list[dict[str, int]] = field(default_factory=list)
+    server_time_ms: int | None = None
     metadata: list[LenNode] = field(default_factory=list)
     all_fields: dict[int, list[Any]] = field(default_factory=dict)
     unknown_len: list[LenNode] = field(default_factory=list)
