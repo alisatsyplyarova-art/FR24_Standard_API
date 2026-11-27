@@ -2,7 +2,8 @@
 """Concurrent API load probe for 10, 50, or 100 ESP32-like clients.
 
 This script sends only ordinary radar-area GET requests. It never reads or sends
-HAR files, cookies, authorization headers, or FR24 session material.
+HAR files, cookies, authorization headers, or FR24 session material. Each request
+registers a zone and can trigger upstream collection on a live collector.
 """
 from __future__ import annotations
 
@@ -92,7 +93,7 @@ def main() -> int:
     if args.requests_per_client < 1 or args.timeout <= 0:
         parser.error("requests-per-client and timeout must be positive")
 
-    print("FR24 Standard API load test (no upstream FR24 requests are generated)")
+    print("FR24 Standard API load test (requests register zones on the target API)")
     results = [
         run_stage(args.url, count, args.requests_per_client, args.timeout)
         for count in args.clients
