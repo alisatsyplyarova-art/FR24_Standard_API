@@ -16,8 +16,8 @@ from urllib.request import Request, urlopen
 
 
 def request_once(base_url: str, client_id: int, request_timeout: float) -> tuple[float, str | None]:
-    lat = -45.0 + (client_id % 10) * 10.0
-    lon = -150.0 + (client_id // 10) * 30.0
+    lat = -80.0 + (client_id % 17) * 10.0
+    lon = -170.0 + (client_id // 17) * 12.0
     url = f"{base_url.rstrip('/')}/v2/lat/{lat:.4f}/lon/{lon:.4f}/dist/25"
     req = Request(url, headers={"Accept": "application/json", "User-Agent": "FR24-API-load-test/1.0"})
     started = time.perf_counter()
