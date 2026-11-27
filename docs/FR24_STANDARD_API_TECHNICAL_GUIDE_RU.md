@@ -376,7 +376,7 @@ REST API сохраняет числовые коды icon, status и source, н
 | `fr24_id` | внутренний идентификатор FR24 |
 | `lat`, `lon` | текущие координаты |
 | `seen` | возраст последнего обновления записи |
-| `seen_pos` | возраст позиции |
+| `seen_pos` | возраст позиции |\n| `timestamp_s` | исходное Feed.field_9, Unix seconds, если присутствует |\n| `timestamp_ms` | исходное Feed.field_15, Unix milliseconds |
 | `flight` | callsign из Feed.field_11 |
 | `track` | track из Feed.field_4; при отсутствии может использоваться вычисленный heading |
 | `altitude_ft` | высота в футах |
