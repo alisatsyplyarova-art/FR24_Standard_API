@@ -13,7 +13,7 @@ from aircraft_cache import CACHE
 from area_manager import AREAS
 
 
-_ROUTE = re.compile(r"^/v2/lat/(-?\\d+(?:\\.\\d+)?)/lon/(-?\\d+(?:\\.\\d+)?)/dist/(\\d+(?:\\.\\d+)?)$")
+_ROUTE = re.compile(r"^/v2/lat/(-?\d+(?:\.\d+)?)/lon/(-?\d+(?:\.\d+)?)/dist/(\d+(?:\.\d+)?)$")
 _EARTH_RADIUS_NM = 3440.065
 _RESPONSE_CACHE_TTL = 5.0
 _RESPONSE_CACHE_MAX = 512
