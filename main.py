@@ -24,7 +24,7 @@ API_HOST = "0.0.0.0"
 API_PORT = 8765
 SOURCE_NAME = "FlightRadarAPI (Flightradar24 website feed)"
 DETAIL_TTL_SECONDS = 900
-DETAIL_WORKER_MAX_PER_CYCLE = 3
+DETAIL_WORKER_MAX_PER_CYCLE = 1
 DETAIL_QUEUE: queue.Queue = queue.Queue(maxsize=32)
 DETAIL_CACHE: dict[str, tuple[float, dict]] = {}
 DETAIL_ATTEMPTED: dict[str, float] = {}
@@ -118,6 +118,7 @@ def _detail_worker() -> None:
             logging.warning("Flight details request failed for %s: %s", getattr(flight, "id", "?"), exc)
         finally:
             DETAIL_QUEUE.task_done()
+            time.sleep(20)
 
 
 def _queue_flight_details(flights) -> int:
@@ -130,6 +131,10 @@ def _queue_flight_details(flights) -> int:
         if not flight_id:
             continue
         with DETAIL_LOCK:
+            if len(DETAIL_ATTEMPTED) > 500:
+                expired = [key for key, stamp in DETAIL_ATTEMPTED.items() if now - stamp > 3600]
+                for key in expired:
+                    DETAIL_ATTEMPTED.pop(key, None)
             cached = DETAIL_CACHE.get(flight_id)
             attempted = DETAIL_ATTEMPTED.get(flight_id, 0.0)
             if cached and now - cached[0] < DETAIL_TTL_SECONDS:
