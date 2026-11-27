@@ -18,6 +18,7 @@ from feed_decoder import decode_feed_response
 from grpc_web import decode_grpc_web_body
 from model import SourceRef
 from upstream_scheduler import AreaScheduler
+from upstream_client import UpstreamClient
 
 BASE_DIR = Path(__file__).resolve().parent
 HAR_FILE = BASE_DIR / "www.flightradar24.com.har"
@@ -170,7 +171,13 @@ def main() -> None:
     scheduler = AreaScheduler()
     AREAS.active_ttl_seconds = config["active_area_ttl_seconds"]
     request_index = 0
-    last_upstream_request = 0.0
+    upstream = UpstreamClient(
+        session,
+        min_interval_seconds=config["upstream_interval_seconds"],
+        max_retries=config["max_retries"],
+        backoff_seconds=config["retry_backoff_seconds"],
+        timeout_seconds=config["request_timeout_seconds"],
+    )
     logging.info("FR24 multi-area collector started; API http://%s:%d", API_HOST, API_PORT)
     logging.info(
         "ESP batch window: %d sec; collector interval: %d sec; response cache: 5 sec; "
@@ -199,42 +206,12 @@ def main() -> None:
             cycle_feeds = 0
             for area_index, area in enumerate(selected_areas, start=1):
                 try:
-                    response = None
-                    for attempt in range(config["max_retries"] + 1):
-                        gap = config["upstream_interval_seconds"] - (time.monotonic() - last_upstream_request)
-                        if gap > 0:
-                            time.sleep(gap)
-                        request_index += 1
-                        last_upstream_request = time.monotonic()
-                        try:
-                            response = session.post(
-                                URL,
-                                data=build_request_body(template, area_config(area)),
-                                headers=headers,
-                                timeout=config["request_timeout_seconds"],
-                            )
-                            if response.status_code in (401, 403):
-                                raise PermissionError(
-                                    f"FR24 returned HTTP {response.status_code}; check HAR/session"
-                                )
-                            response.raise_for_status()
-                            break
-                        except requests.RequestException as exc:
-                            if isinstance(exc, requests.HTTPError) and exc.response is not None:
-                                status = exc.response.status_code
-                                if status != 429 and status < 500:
-                                    raise
-                            if attempt >= config["max_retries"]:
-                                raise
-                            delay = config["retry_backoff_seconds"] * (2 ** attempt)
-                            logging.warning(
-                                "FR24 transient failure for area %d/%d (attempt %d/%d); retry in %.1fs",
-                                area_index, len(selected_areas), attempt + 1,
-                                config["max_retries"] + 1, delay,
-                            )
-                            time.sleep(delay)
-                    if response is None:
-                        continue
+                    request_index += 1
+                    response = upstream.post(
+                        URL,
+                        data=build_request_body(template, area_config(area)),
+                        headers=headers,
+                    )
                     logging.info(
                         "FR24 request #%d area %d/%d: HTTP %d, %d bytes; center %.5f, %.5f radius %.1f km",
                         request_index, area_index, len(selected_areas), response.status_code, len(response.content),
