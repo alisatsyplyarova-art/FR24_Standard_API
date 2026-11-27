@@ -70,6 +70,25 @@ class ApiServerTests(unittest.TestCase):
         self.assertEqual(payload["ac"][0]["track"], 270.0)
         api_server.AREAS.register.assert_called_once_with(54.91, 82.33, 50.0)
 
+    def test_flight_radar_d_clock_1132_required_json_contract(self):
+        _, payload = self.get_json("/v2/lat/54.91/lon/82.33/dist/50")
+        self.assertIsInstance(payload["ac"], list)
+        self.assertIsInstance(payload["total"], int)
+        self.assertIsInstance(payload["now"], int)
+        self.assertIsInstance(payload["ctime"], int)
+        self.assertEqual(payload["total"], len(payload["ac"]))
+        aircraft = payload["ac"][0]
+        self.assertIsInstance(aircraft["fr24_id"], str)
+        self.assertIsInstance(aircraft["lat"], (int, float))
+        self.assertIsInstance(aircraft["lon"], (int, float))
+        self.assertIsInstance(aircraft["seen"], (int, float))
+        self.assertIsInstance(aircraft["seen_pos"], (int, float))
+        self.assertGreaterEqual(aircraft["seen_pos"], 0)
+        if "flight" in aircraft:
+            self.assertIsInstance(aircraft["flight"], str)
+        if "track" in aircraft:
+            self.assertIsInstance(aircraft["track"], (int, float))
+
     def test_invalid_coordinates_are_rejected(self):
         with self.assertRaises(HTTPError) as caught:
             urlopen(self.base_url + "/v2/lat/91/lon/82.33/dist/50", timeout=3)
