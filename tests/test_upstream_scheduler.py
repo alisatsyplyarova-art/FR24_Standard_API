@@ -33,6 +33,26 @@ class AreaSchedulerTests(unittest.TestCase):
         self.assertEqual([a.longitude for a in first], [0.0, 1.0])
         self.assertEqual([a.longitude for a in second], [2.0, 3.0])
 
+    def test_round_robin_keeps_position_when_registry_order_changes(self):
+        scheduler = AreaScheduler()
+        scheduler.select(self.areas, 2)
+        reordered = [self.areas[4], self.areas[1], self.areas[3], self.areas[0], self.areas[2]]
+        selected = scheduler.select(reordered, 2)
+        self.assertEqual([a.longitude for a in selected], [2.0, 3.0])
+
+    def test_round_robin_recovers_when_next_area_expires(self):
+        scheduler = AreaScheduler()
+        scheduler.select(self.areas, 2)
+        remaining = [self.areas[0], self.areas[3], self.areas[4]]
+        selected = scheduler.select(remaining, 2)
+        self.assertEqual([a.longitude for a in selected], [0.0, 3.0])
+
+    def test_limit_larger_than_queue_returns_each_unique_area_once(self):
+        scheduler = AreaScheduler()
+        selected = scheduler.select(self.areas, 500)
+        self.assertEqual(len(selected), len(self.areas))
+        self.assertEqual(len({a.longitude for a in selected}), len(self.areas))
+
     def test_duplicate_areas_are_deduplicated(self):
         scheduler = AreaScheduler()
         duplicated = [self.areas[0], self.areas[0], self.areas[1]]
