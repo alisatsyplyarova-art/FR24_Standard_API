@@ -62,5 +62,47 @@ class LiveFeedSchemaTests(unittest.TestCase):
         self.assertEqual(decoded.server_time_ms, 1790000000123)
 
 
+    def test_root_feed_fields_and_extra_flight_info(self):
+        route = lfield(1, b"OVB") + lfield(2, b"SVO")
+        extra = (
+            lfield(1, b"SU123")
+            + lfield(2, b"RA-12345")
+            + lfield(3, route)
+            + lfield(4, b"A320")
+            + vfield(14, 0xABC123)
+        )
+        feed = (
+            vfield(1, 98765)
+            + varint((2 << 3) | 5) + struct.pack("<f", 54.91)
+            + varint((3 << 3) | 5) + struct.pack("<f", 82.33)
+            + vfield(4, 270)
+            + vfield(5, 32000)
+            + vfield(6, 450)
+            + vfield(8, 4)
+            + vfield(10, 0)
+            + lfield(11, b"SU123")
+            + lfield(13, extra)
+            + vfield(15, 1790000000000)
+        )
+        response = lfield(1, feed)
+        decoded = decode_feed_response(
+            response,
+            SourceRef(http_record_index=2, frame_index=0, protobuf_message_index=0),
+            AnalysisContext(),
+        )
+        self.assertEqual(len(decoded.feeds), 1)
+        aircraft = decoded.feeds[0]
+        self.assertEqual(aircraft.field_4, 270)
+        self.assertEqual(aircraft.field_5, 32000)
+        self.assertEqual(aircraft.field_6, 450)
+        self.assertEqual(aircraft.field_8, 4)
+        self.assertIs(aircraft.field_10, False)
+        self.assertEqual(aircraft.aircraft_type, "A320")
+        self.assertEqual(aircraft.registration, "RA-12345")
+        self.assertEqual(aircraft.origin, "OVB")
+        self.assertEqual(aircraft.destination, "SVO")
+        self.assertEqual(aircraft.icao_hex, "ABC123")
+
+
 if __name__ == "__main__":
     unittest.main()
