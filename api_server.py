@@ -145,6 +145,7 @@ class _Handler(BaseHTTPRequestHandler):
                 "seen": max(0.0, now - item["last_seen"]),
                 "seen_pos": seen_pos,
                 "distance_nm": round(distance, 3),
+                "_distance_nm": distance,
             }
 
             # Forward every decoded cache field, including position history and
@@ -165,6 +166,7 @@ class _Handler(BaseHTTPRequestHandler):
 
         selected.sort(key=lambda row: row["_distance_nm"])
         for row in selected:
+            row.pop("_distance_nm", None)
 
         now_ms = int(now * 1000)
         self._send_json(200, {
