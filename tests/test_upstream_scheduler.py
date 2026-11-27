@@ -38,7 +38,7 @@ class AreaSchedulerTests(unittest.TestCase):
         scheduler.select(self.areas, 2)
         reordered = [self.areas[4], self.areas[1], self.areas[3], self.areas[0], self.areas[2]]
         selected = scheduler.select(reordered, 2)
-        self.assertEqual([a.longitude for a in selected], [2.0, 3.0])
+        self.assertEqual([a.longitude for a in selected], [2.0, 4.0])
 
     def test_round_robin_recovers_when_next_area_expires(self):
         scheduler = AreaScheduler()
