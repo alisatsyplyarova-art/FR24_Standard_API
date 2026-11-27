@@ -13,9 +13,10 @@ from protobuf_export import serialize_message
 class AircraftCache:
     """Bounded in-memory cache of the latest positions received from FR24."""
 
-    def __init__(self, max_points: int = 120, max_age: int = 120):
+    def __init__(self, max_points: int = 120, active_after: int = 120, retention_age: int = 1800):
         self.max_points = max_points
-        self.max_age = max_age
+        self.active_after = active_after
+        self.retention_age = retention_age
         self._aircraft: dict[str, dict] = {}
         self._source_stats: list[dict[str, int]] = []
         self._feed_server_time_ms: int | None = None
@@ -55,7 +56,7 @@ class AircraftCache:
 
                 # FR24 Feed timestamps in this project are Unix milliseconds.
                 timestamp = stamp / 1000 if stamp > 100_000_000_000 else float(stamp)
-                if timestamp > now + 300 or now - timestamp > self.max_age:
+                if timestamp > now + 300 or now - timestamp > self.retention_age:
                     continue
 
                 key = str(aircraft_id)
@@ -95,7 +96,7 @@ class AircraftCache:
                         "timestamp_s": None,
                         "timestamp_ms": None,
                         "points": OrderedDict(),
-                        "last_seen": timestamp,
+                        "last_seen": now,
                     },
                 )
 
@@ -170,7 +171,7 @@ class AircraftCache:
                 while len(item["points"]) > self.max_points:
                     item["points"].popitem(last=False)
 
-                item["last_seen"] = max(item["last_seen"], timestamp)
+                item["last_seen"] = now
 
             self._remove_stale(now)
 
@@ -187,18 +188,22 @@ class AircraftCache:
         stale_ids = [
             aircraft_id
             for aircraft_id, item in self._aircraft.items()
-            if now - item["last_seen"] > self.max_age
+            if now - item["last_seen"] > self.retention_age
         ]
         for aircraft_id in stale_ids:
             del self._aircraft[aircraft_id]
 
-    def snapshot(self) -> list[dict]:
+    def snapshot(self, include_stale: bool = False) -> list[dict]:
         now = time.time()
         with self._lock:
             self._remove_stale(now)
             result = []
 
             for item in self._aircraft.values():
+                seen_seconds = max(0.0, now - item["last_seen"])
+                is_stale = seen_seconds > self.active_after
+                if is_stale and not include_stale:
+                    continue
                 points = list(item["points"].values())
                 if not points:
                     continue
@@ -263,6 +268,8 @@ class AircraftCache:
                         "heading": heading,
                         "point_count": len(points),
                         "last_seen": item["last_seen"],
+                        "seen_seconds": seen_seconds,
+                        "is_stale": is_stale,
                     }
                 )
 
