@@ -374,7 +374,9 @@ def decode_feed_response(
     for item in fields.get(3, []):
         if item.wire_type != WT_LEN:
             continue
-        response.selected_feeds.append(decode_feed(item.raw_value, source, context))
+        selected_feed = decode_feed(item.raw_value, source, context)
+        selected_feed.is_selected = True
+        response.selected_feeds.append(selected_feed)
 
     response.server_time_ms = first_varint(fields, 4)
 
