@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import time
 
 import requests
@@ -64,4 +65,9 @@ class UpstreamClient:
                 transient = status is None or status == 429 or status >= 500
                 if not transient or attempt >= self.max_retries:
                     raise
-                self._sleep(self.backoff_seconds * (2 ** attempt))
+                delay = self.backoff_seconds * (2 ** attempt)
+                logging.warning(
+                    "FR24 transient upstream failure (%s); retry %d/%d in %.1fs",
+                    type(exc).__name__, attempt + 1, self.max_retries, delay,
+                )
+                self._sleep(delay)
