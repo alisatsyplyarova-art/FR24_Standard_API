@@ -11,10 +11,10 @@ class AreaKey:
 
 
 class AreaScheduler:
-    """Fair round-robin selector that caps upstream areas handled per cycle."""
+    """Stable-key round-robin selector with a hard per-cycle area cap."""
 
     def __init__(self) -> None:
-        self._cursor = 0
+        self._next_key: tuple[float, float, float] | None = None
 
     @staticmethod
     def _key(area) -> tuple[float, float, float]:
@@ -27,6 +27,7 @@ class AreaScheduler:
     def select(self, areas: list, limit: int) -> list:
         if limit < 1:
             raise ValueError("limit must be at least 1")
+
         unique = []
         seen = set()
         for area in areas:
@@ -34,11 +35,18 @@ class AreaScheduler:
             if key not in seen:
                 unique.append(area)
                 seen.add(key)
+
         if not unique:
-            self._cursor = 0
+            self._next_key = None
             return []
-        start = self._cursor % len(unique)
+
+        keys = [self._key(area) for area in unique]
+        try:
+            start = keys.index(self._next_key)
+        except ValueError:
+            start = 0
+
         count = min(limit, len(unique))
         selected = [unique[(start + offset) % len(unique)] for offset in range(count)]
-        self._cursor = (start + count) % len(unique)
+        self._next_key = keys[(start + count) % len(unique)]
         return selected
