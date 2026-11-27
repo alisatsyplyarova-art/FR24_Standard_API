@@ -71,13 +71,18 @@ class _Handler(BaseHTTPRequestHandler):
                 "active_area": area,
                 "source_stats": metadata["source_stats"],
                 "feed_server_time_ms": metadata["feed_server_time_ms"],
+                "feed_response_protobuf": metadata["feed_response_protobuf"],
                 "now": int(now * 1000),
             })
             return
 
-        if path == "/aircraft":
+        if path in ("/aircraft", "/api/radar"):
             aircraft = CACHE.snapshot()
-            self._send_json(200, {"aircraft": aircraft, "count": len(aircraft), "timestamp": now})
+            self._send_json(200, {
+                "aircraft": aircraft,
+                "count": len(aircraft),
+                "timestamp": now,
+            })
             return
 
         match = _ROUTE.fullmatch(path)
@@ -108,35 +113,27 @@ class _Handler(BaseHTTPRequestHandler):
                 "lon": current["longitude"],
                 "seen": max(0.0, now - item["last_seen"]),
                 "seen_pos": seen_pos,
-                "_distance_nm": distance,
+                "distance_nm": round(distance, 3),
             }
-            if item.get("callsign"):
-                row["flight"] = item["callsign"]
-            for name in (
-                "flight_number", "registration", "origin", "destination",
-                "diverted_to", "aircraft_type", "squawk", "vertical_speed_fpm",
-                "aircraft_age", "country_of_reg", "icao_address", "icao_hex",
-                "logo_id", "airspace", "airspace_id", "operated_by_id",
-                "squawk_availability", "vspeed_availability",
-                "airspace_availability", "schedule", "ems_info", "ems_availability", "icon",
-                "status", "on_ground", "source",
-            ):
-                value = item.get(name)
+
+            # Forward every decoded cache field, including position history and
+            # lossless protobuf wire data. Keep legacy ESP32 aliases below.
+            for name, value in item.items():
+                if name in ("id", "current", "last_seen"):
+                    continue
                 if value is not None and value != {}:
                     row[name] = value
-            if item.get("track") is not None:
-                row["track"] = item["track"]
-            if item.get("altitude_ft") is not None:
-                row["altitude_ft"] = item["altitude_ft"]
-            if item.get("speed_kt") is not None:
-                row["speed_kt"] = item["speed_kt"]
+
+            if item.get("callsign"):
+                row["flight"] = item["callsign"]
             if row.get("track") is None and item.get("heading") is not None:
                 row["track"] = round(item["heading"], 1)
+            if item.get("icao_hex"):
+                row["hex"] = item["icao_hex"]
             selected.append(row)
 
         selected.sort(key=lambda row: row["_distance_nm"])
         for row in selected:
-            row.pop("_distance_nm", None)
 
         now_ms = int(now * 1000)
         self._send_json(200, {
