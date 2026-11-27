@@ -4,9 +4,9 @@ import unittest
 from unittest.mock import patch
 from urllib.request import urlopen
 from urllib.error import HTTPError
+from http.server import ThreadingHTTPServer
 
 import api_server
-from api_server import start_api_server
 
 
 class ApiServerTests(unittest.TestCase):
@@ -39,7 +39,7 @@ class ApiServerTests(unittest.TestCase):
         self.register_patch = patch.object(api_server.AREAS, "register")
         self.cache_patch.start()
         self.register_patch.start()
-        self.server = start_api_server("127.0.0.1", 0)
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), api_server._Handler)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
         self.base_url = f"http://127.0.0.1:{self.server.server_address[1]}"
