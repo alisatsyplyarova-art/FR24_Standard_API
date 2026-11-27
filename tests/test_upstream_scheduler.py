@@ -53,6 +53,17 @@ class AreaSchedulerTests(unittest.TestCase):
         self.assertEqual(len(selected), len(self.areas))
         self.assertEqual(len({a.longitude for a in selected}), len(self.areas))
 
+    def test_100_distinct_areas_are_serviced_in_five_bounded_cycles(self):
+        areas = [RadarArea(0.0, float(index), 10.0) for index in range(100)]
+        scheduler = AreaScheduler()
+        served = []
+        for _ in range(5):
+            batch = scheduler.select(areas, 20)
+            self.assertEqual(len(batch), 20)
+            served.extend(a.longitude for a in batch)
+        self.assertEqual(len(set(served)), 100)
+        self.assertEqual(set(served), set(float(index) for index in range(100)))
+
     def test_duplicate_areas_are_deduplicated(self):
         scheduler = AreaScheduler()
         duplicated = [self.areas[0], self.areas[0], self.areas[1]]
