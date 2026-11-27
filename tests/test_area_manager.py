@@ -45,6 +45,35 @@ class AreaMergeTests(unittest.TestCase):
         self.assert_area_encloses(merged[0], a)
         self.assert_area_encloses(merged[0], b)
 
+    def test_high_latitude_overlapping_areas_merge_and_preserve_coverage(self):
+        a = RadarArea(80.0, 20.0, 80.0)
+        b = RadarArea(80.2, 21.0, 80.0)
+        merged = merge_overlapping_areas([a, b])
+        self.assertEqual(len(merged), 1)
+        self.assert_area_encloses(merged[0], a)
+        self.assert_area_encloses(merged[0], b)
+
+    def test_one_hundred_devices_in_ten_clusters_form_ten_areas(self):
+        areas = []
+        for cluster in range(10):
+            base_lon = -90.0 + cluster * 20.0
+            for device in range(10):
+                areas.append(
+                    RadarArea(
+                        latitude=(device % 5) * 0.01,
+                        longitude=base_lon + (device // 5) * 0.01,
+                        radius_km=25.0,
+                    )
+                )
+        self.assertEqual(len(merge_overlapping_areas(areas)), 10)
+
+    def test_one_hundred_distant_devices_remain_one_hundred_areas(self):
+        areas = [
+            RadarArea(0.0, -150.0 + index * 3.0, 20.0)
+            for index in range(100)
+        ]
+        self.assertEqual(len(merge_overlapping_areas(areas)), 100)
+
     def test_registry_deduplicates_identical_areas(self):
         registry = AreaRegistry(batch_window_seconds=0.0)
         registry.register(54.91001, 82.33001, 50.0)
