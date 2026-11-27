@@ -4,7 +4,8 @@
 
 Подробное описание архитектуры, protobuf-декодирования, HTTP API, установки, диагностики, ограничений и готовое техническое задание для Claude Code:
 
-- [FR24 Standard API — техническое руководство и инструкция для разработчика](docs/FR24_STANDARD_API_TECHNICAL_GUIDE_RU.md)\n- [Реестр независимых серверов и проектов по авиационным данным](docs/INDEPENDENT_FLIGHT_SERVERS_AND_PROJECTS_RU.md) — классификация найденных FR24/ADS-B клиентов, REST-серверов, API и инструментов мониторинга; официальная документация FR24 API исключена.
+- [FR24 Standard API — техническое руководство и инструкция для разработчика](docs/FR24_STANDARD_API_TECHNICAL_GUIDE_RU.md)
+- [Реестр независимых серверов и проектов по авиационным данным](docs/INDEPENDENT_FLIGHT_SERVERS_AND_PROJECTS_RU.md) — классификация найденных FR24/ADS-B клиентов, REST-серверов, API и инструментов мониторинга; официальная документация FR24 API исключена.
 
 
 Локальный сборщик данных Flightradar24 LiveFeed с HTTP API.
