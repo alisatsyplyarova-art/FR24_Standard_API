@@ -20,9 +20,10 @@ class AircraftCache:
         self._source_stats: list[dict[str, int]] = []
         self._feed_server_time_ms: int | None = None
         self._feed_response_protobuf: list[dict] = []
+        self._source_name: str | None = None
         self._lock = threading.RLock()
 
-    def update(self, feeds, source_stats=None, server_time_ms=None, response_protobuf=None) -> None:
+    def update(self, feeds, source_stats=None, server_time_ms=None, response_protobuf=None, source_name=None) -> None:
         now = time.time()
         with self._lock:
             if source_stats is not None:
@@ -31,6 +32,8 @@ class AircraftCache:
                 self._feed_server_time_ms = int(server_time_ms)
             if response_protobuf is not None:
                 self._feed_response_protobuf = list(response_protobuf)
+            if source_name is not None:
+                self._source_name = str(source_name)
             for feed in feeds:
                 aircraft_id = getattr(feed, "field_1", None)
                 latitude = getattr(feed, "field_2", None)
@@ -60,6 +63,7 @@ class AircraftCache:
                     key,
                     {
                         "id": key,
+                        "data_source": self._source_name,
                         "callsign": None,
                         "flight_number": None,
                         "registration": None,
@@ -102,6 +106,9 @@ class AircraftCache:
                         "captured_at_ms": int(timestamp * 1000),
                         "message": raw_message,
                     }
+
+                if self._source_name is not None:
+                    item["data_source"] = self._source_name
 
                 timestamp_s = getattr(feed, "field_9", None)
                 if timestamp_s is not None:
@@ -173,6 +180,7 @@ class AircraftCache:
                 "source_stats": [dict(item) for item in self._source_stats],
                 "feed_server_time_ms": self._feed_server_time_ms,
                 "feed_response_protobuf": list(self._feed_response_protobuf),
+                "source_name": self._source_name,
             }
 
     def _remove_stale(self, now: float) -> None:
@@ -216,6 +224,7 @@ class AircraftCache:
                 result.append(
                     {
                         "id": item["id"],
+                        "data_source": item.get("data_source"),
                         "callsign": item["callsign"],
                         "flight_number": item.get("flight_number"),
                         "registration": item.get("registration"),
