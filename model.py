@@ -105,6 +105,7 @@ class Feed:
     unknown_len: list[LenNode] = field(default_factory=list)
     missing: list[str] = field(default_factory=list)
     source: SourceRef | None = None
+    is_selected: bool = False
 
 
 @dataclass
