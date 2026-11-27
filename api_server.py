@@ -69,6 +69,7 @@ class _Handler(BaseHTTPRequestHandler):
                 "status": "ok",
                 "aircraft": len(aircraft),
                 "active_area": area,
+                "source": metadata["source_name"],
                 "source_stats": metadata["source_stats"],
                 "feed_server_time_ms": metadata["feed_server_time_ms"],
                 "feed_response_frames": len(metadata["feed_response_protobuf"]),
@@ -83,6 +84,7 @@ class _Handler(BaseHTTPRequestHandler):
                 "frames": frames,
                 "count": len(frames),
                 "feed_server_time_ms": metadata["feed_server_time_ms"],
+                "source": metadata["source_name"],
                 "timestamp": int(now * 1000),
             })
             return
