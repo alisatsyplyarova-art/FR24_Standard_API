@@ -17,6 +17,7 @@ from area_manager import AREAS, RadarArea
 from feed_decoder import decode_feed_response
 from grpc_web import decode_grpc_web_body
 from model import SourceRef
+from upstream_scheduler import AreaScheduler
 
 BASE_DIR = Path(__file__).resolve().parent
 HAR_FILE = BASE_DIR / "www.flightradar24.com.har"
@@ -28,6 +29,10 @@ URL = "https://data-feed.flightradar24.com/fr24.feed.api.v1.Feed/LiveFeed"
 INTERVAL_SECONDS = 10
 BATCH_WINDOW_SECONDS = 5
 TIMEOUT_SECONDS = 20
+DEFAULT_MAX_AREAS_PER_CYCLE = 20
+DEFAULT_UPSTREAM_INTERVAL_SECONDS = 0.25
+DEFAULT_MAX_RETRIES = 2
+DEFAULT_RETRY_BACKOFF_SECONDS = 1.0
 API_HOST = "0.0.0.0"
 API_PORT = 8765
 
@@ -61,7 +66,31 @@ def load_config() -> dict:
         raise ValueError("Coordinates are out of range")
     if not (0 < radius_km <= 20000):
         raise ValueError("Radius must be between 0 and 20000 km")
-    return {"latitude": lat, "longitude": lon, "radius_km": radius_km}
+    settings = {
+        "latitude": lat,
+        "longitude": lon,
+        "radius_km": radius_km,
+        "max_areas_per_cycle": int(config.get("max_areas_per_cycle", DEFAULT_MAX_AREAS_PER_CYCLE)),
+        "upstream_interval_seconds": float(config.get("upstream_interval_seconds", DEFAULT_UPSTREAM_INTERVAL_SECONDS)),
+        "max_retries": int(config.get("max_retries", DEFAULT_MAX_RETRIES)),
+        "retry_backoff_seconds": float(config.get("retry_backoff_seconds", DEFAULT_RETRY_BACKOFF_SECONDS)),
+        "request_timeout_seconds": float(config.get("request_timeout_seconds", TIMEOUT_SECONDS)),
+        "active_area_ttl_seconds": float(config.get("active_area_ttl_seconds", 35.0)),
+        "save_captures": bool(config.get("save_captures", False)),
+    }
+    if not (1 <= settings["max_areas_per_cycle"] <= 500):
+        raise ValueError("max_areas_per_cycle must be between 1 and 500")
+    if not (0 <= settings["upstream_interval_seconds"] <= 60):
+        raise ValueError("upstream_interval_seconds must be between 0 and 60")
+    if not (0 <= settings["max_retries"] <= 5):
+        raise ValueError("max_retries must be between 0 and 5")
+    if not (0.1 <= settings["retry_backoff_seconds"] <= 60):
+        raise ValueError("retry_backoff_seconds must be between 0.1 and 60")
+    if not (1 <= settings["request_timeout_seconds"] <= 120):
+        raise ValueError("request_timeout_seconds must be between 1 and 120")
+    if not (10 <= settings["active_area_ttl_seconds"] <= 600):
+        raise ValueError("active_area_ttl_seconds must be between 10 and 600")
+    return settings
 
 
 def build_request_body(template: bytes, config: dict | None = None) -> bytes:
@@ -138,10 +167,17 @@ def main() -> None:
 
     server = start_api_server(API_HOST, API_PORT)
     session = requests.Session()
+    scheduler = AreaScheduler()
+    AREAS.active_ttl_seconds = config["active_area_ttl_seconds"]
     request_index = 0
+    last_upstream_request = 0.0
     logging.info("FR24 multi-area collector started; API http://%s:%d", API_HOST, API_PORT)
-    logging.info("ESP batch window: %d sec; collector target interval: %d sec; response cache: 5 sec",
-                 BATCH_WINDOW_SECONDS, INTERVAL_SECONDS)
+    logging.info(
+        "ESP batch window: %d sec; collector interval: %d sec; response cache: 5 sec; "
+        "max areas/cycle=%d; upstream gap=%.2fs; retries=%d",
+        BATCH_WINDOW_SECONDS, INTERVAL_SECONDS, config["max_areas_per_cycle"],
+        config["upstream_interval_seconds"], config["max_retries"],
+    )
 
     try:
         while True:
@@ -150,30 +186,60 @@ def main() -> None:
             if not areas:
                 areas = [RadarArea(config["latitude"], config["longitude"], config["radius_km"])]
 
-            logging.info("Batch ready: %d merged FR24 area(s); registry=%s",
-                         len(areas), AREAS.stats())
+            selected_areas = scheduler.select(areas, config["max_areas_per_cycle"])
+            logging.info(
+                "Batch ready: %d merged area(s), processing %d this cycle; registry=%s",
+                len(areas), len(selected_areas), AREAS.stats(),
+            )
+            if len(areas) > len(selected_areas):
+                logging.warning(
+                    "Upstream area limit reached: %d deferred to later cycles",
+                    len(areas) - len(selected_areas),
+                )
             cycle_feeds = 0
-            for area_index, area in enumerate(areas, start=1):
-                request_index += 1
+            for area_index, area in enumerate(selected_areas, start=1):
                 try:
-                    response = session.post(
-                        URL,
-                        data=build_request_body(template, area_config(area)),
-                        headers=headers,
-                        timeout=TIMEOUT_SECONDS,
-                    )
+                    response = None
+                    for attempt in range(config["max_retries"] + 1):
+                        gap = config["upstream_interval_seconds"] - (time.monotonic() - last_upstream_request)
+                        if gap > 0:
+                            time.sleep(gap)
+                        request_index += 1
+                        last_upstream_request = time.monotonic()
+                        try:
+                            response = session.post(
+                                URL,
+                                data=build_request_body(template, area_config(area)),
+                                headers=headers,
+                                timeout=config["request_timeout_seconds"],
+                            )
+                            if response.status_code in (401, 403):
+                                raise PermissionError(
+                                    f"FR24 returned HTTP {response.status_code}; check HAR/session"
+                                )
+                            response.raise_for_status()
+                            break
+                        except requests.RequestException:
+                            if attempt >= config["max_retries"]:
+                                raise
+                            delay = config["retry_backoff_seconds"] * (2 ** attempt)
+                            logging.warning(
+                                "FR24 transient failure for area %d/%d (attempt %d/%d); retry in %.1fs",
+                                area_index, len(selected_areas), attempt + 1,
+                                config["max_retries"] + 1, delay,
+                            )
+                            time.sleep(delay)
+                    if response is None:
+                        continue
                     logging.info(
                         "FR24 request #%d area %d/%d: HTTP %d, %d bytes; center %.5f, %.5f radius %.1f km",
-                        request_index, area_index, len(areas), response.status_code, len(response.content),
+                        request_index, area_index, len(selected_areas), response.status_code, len(response.content),
                         area.latitude, area.longitude, area.radius_km,
                     )
-                    if response.status_code in (401, 403):
-                        raise PermissionError(f"FR24 returned HTTP {response.status_code}; check HAR/session")
-                    response.raise_for_status()
                     if not response.content:
                         logging.warning("FR24 request #%d returned an empty body", request_index)
                         continue
-                    if bool(json.loads(CONFIG_FILE.read_text(encoding="utf-8-sig")).get("save_captures", False)):
+                    if config["save_captures"]:
                         CAPTURE_DIR.mkdir(parents=True, exist_ok=True)
                         stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
                         (CAPTURE_DIR / f"live_{stamp}.bin").write_bytes(response.content)
@@ -191,8 +257,10 @@ def main() -> None:
                 except Exception:
                     logging.exception("FR24 request/decode cycle failed for area %d", area_index)
 
-            logging.info("Batch complete: %d feed records; %d aircraft in shared cache",
-                         cycle_feeds, len(CACHE.snapshot()))
+            logging.info(
+                "Batch complete: %d feed records; %d aircraft in shared cache; processed %d/%d areas",
+                cycle_feeds, len(CACHE.snapshot()), len(selected_areas), len(areas),
+            )
             # Avoid a tight loop when no ESP32 requests arrive.
             elapsed = time.monotonic() - cycle_started
             if not AREAS.snapshot():
