@@ -81,7 +81,7 @@ class ApiServerTests(unittest.TestCase):
         self.assertEqual(payload["ac"][0]["hex"], "ABC123")
         api_server.AREAS.register.assert_called_once_with(54.91, 82.33, 50.0)
 
-    def test_flight_radar_d_clock_1132_required_json_contract(self):
+    def test_flight_radar_d_clock_1135_required_json_contract(self):
         _, payload = self.get_json("/v2/lat/54.91/lon/82.33/dist/50")
         self.assertIsInstance(payload["ac"], list)
         self.assertIsInstance(payload["total"], int)
