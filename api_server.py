@@ -11,6 +11,13 @@ from urllib.parse import urlsplit
 
 from aircraft_cache import CACHE
 
+_DETAILS_LOADER = None
+
+
+def set_details_loader(loader) -> None:
+    global _DETAILS_LOADER
+    _DETAILS_LOADER = loader
+
 
 _ROUTE = re.compile(r"^/v2/lat/(-?\d+(?:\.\d+)?)/lon/(-?\d+(?:\.\d+)?)/dist/(\d+(?:\.\d+)?)$")
 _EARTH_RADIUS_NM = 3440.065
@@ -76,6 +83,19 @@ class _Handler(BaseHTTPRequestHandler):
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
             self.wfile.write(body)
+            return
+
+        details_match = re.fullmatch(r"/aircraft/([^/]+)/details", path)
+        if details_match:
+            aircraft_id = details_match.group(1)
+            try:
+                details = CACHE.get_details(aircraft_id, _DETAILS_LOADER)
+                if details is None:
+                    self._send_json(404, {"error": "Aircraft is no longer in the live cache", "id": aircraft_id})
+                else:
+                    self._send_json(200, {"id": aircraft_id, "details": details, "source": "FlightRadarAPI"})
+            except Exception as exc:
+                self._send_json(502, {"error": f"{type(exc).__name__}: {exc}", "id": aircraft_id})
             return
 
         if path == "/health":
