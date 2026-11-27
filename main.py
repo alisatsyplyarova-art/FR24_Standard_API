@@ -124,6 +124,10 @@ def _detail_worker() -> None:
 def _queue_flight_details(flights) -> int:
     queued = 0
     now = time.monotonic()
+    with DETAIL_LOCK:
+        expired_details = [key for key, (stamp, _) in DETAIL_CACHE.items() if now - stamp > DETAIL_TTL_SECONDS * 4]
+        for key in expired_details:
+            DETAIL_CACHE.pop(key, None)
     for flight in flights:
         if queued >= DETAIL_WORKER_MAX_PER_CYCLE:
             break
