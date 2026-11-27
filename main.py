@@ -1,46 +1,26 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 import logging
 import math
-import struct
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 
-import requests
+from FlightRadarAPI import FlightRadar24API
 
 from aircraft_cache import CACHE
-from analysis_context import AnalysisContext
 from api_server import get_active_area, start_api_server
-from feed_decoder import decode_feed_response
-from grpc_web import decode_grpc_web_body
-from model import SourceRef
-from protobuf_export import serialize_message
+from model import Feed
 
 BASE_DIR = Path(__file__).resolve().parent
-HAR_FILE = BASE_DIR / "www.flightradar24.com.har"
 CONFIG_FILE = BASE_DIR / "radar_config.json"
-CAPTURE_DIR = BASE_DIR / "captures"
 LOG_DIR = BASE_DIR / "logs"
 
-URL = "https://data-feed.flightradar24.com/fr24.feed.api.v1.Feed/LiveFeed"
 INTERVAL_SECONDS = 10
 TIMEOUT_SECONDS = 20
 API_HOST = "0.0.0.0"
 API_PORT = 8765
-
-ALLOWED_HEADERS = {
-    "content-type",
-    "x-grpc-web",
-    "x-user-agent",
-    "fr24-device-id",
-    "fr24-platform",
-    "origin",
-    "referer",
-    "user-agent",
-    "accept",
-}
+SOURCE_NAME = "FlightRadarAPI (Flightradar24 website feed)"
 
 
 def setup_logging() -> None:
@@ -73,175 +53,116 @@ def load_config() -> dict:
     return {"latitude": lat, "longitude": lon, "radius_km": radius_km}
 
 
-def build_request_body(template: bytes, config: dict | None = None) -> bytes:
-    # Если ESP32 уже присылал запрос, используем его центр и радиус.
-    # radar_config.json остаётся только начальной областью до первого запроса.
-    config = config or load_config()
-    lat = config["latitude"]
-    lon = config["longitude"]
-    radius_km = config["radius_km"]
-
-    angular = radius_km / 6371.0088
-    lat_delta = math.degrees(angular)
-    north = min(90.0, lat + lat_delta)
-    south = max(-90.0, lat - lat_delta)
-    if abs(lat) + lat_delta >= 90:
-        lon_delta = 180.0
-    else:
-        ratio = math.sin(angular) / math.cos(math.radians(lat))
-        lon_delta = math.degrees(math.asin(min(1.0, max(-1.0, ratio))))
-
-    west = lon - lon_delta
-    east = lon + lon_delta
-    if west < -180 or east > 180:
-        raise ValueError("Configured radar area crosses the date line; adjust longitude/radius")
-
-    result = bytearray(template)
-    if (
-        len(result) != 70
-        or result[:7] != bytes((0, 0, 0, 0, 65, 10, 20))
-        or [result[i] for i in (7, 12, 17, 22)] != [13, 21, 29, 37]
-    ):
-        raise ValueError("Unexpected HAR protobuf template; refusing to alter request")
-
-    for offset, value in zip((8, 13, 18, 23), (north, south, west, east)):
-        struct.pack_into("<f", result, offset, value)
-    return bytes(result)
+def _number(value):
+    """Convert FlightRadarAPI values to numbers; its missing-value sentinel is 'N/A'."""
+    if value is None or value == "N/A" or value == "":
+        return None
+    try:
+        result = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return result if math.isfinite(result) else None
 
 
-def load_request_template() -> tuple[bytes, dict[str, str]]:
-    if not HAR_FILE.is_file():
-        raise FileNotFoundError(f"HAR file not found: {HAR_FILE}")
+def _text(value):
+    if value is None or value == "N/A" or value == "":
+        return None
+    return str(value)
 
-    with HAR_FILE.open("r", encoding="utf-8-sig") as file:
-        har = json.load(file)
 
-    entries = har.get("log", {}).get("entries", [])
-    entry = next(
-        (
-            item
-            for item in entries
-            if item.get("request", {}).get("url") == URL
-            and item.get("request", {}).get("method") == "POST"
-            and item.get("request", {}).get("postData", {}).get("text")
-        ),
-        None,
+def _boolean(value):
+    if isinstance(value, bool):
+        return value
+    if value in (1, "1", "true", "True"):
+        return True
+    if value in (0, "0", "false", "False"):
+        return False
+    return None
+
+
+def normalize_flight(flight) -> Feed | None:
+    """Map public FlightRadarAPI flight fields into the existing cache model."""
+    latitude = _number(flight.latitude)
+    longitude = _number(flight.longitude)
+    stamp = _number(flight.time)
+    if latitude is None or longitude is None or stamp is None:
+        return None
+    if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
+        return None
+
+    altitude = _number(flight.altitude)
+    speed = _number(flight.ground_speed)
+    heading = _number(flight.heading)
+    vertical_speed = _number(flight.vertical_speed)
+
+    return Feed(
+        field_1=str(flight.id),
+        field_2=latitude,
+        field_3=longitude,
+        field_4=int(heading) % 360 if heading is not None else None,
+        field_5=int(altitude) if altitude is not None else None,
+        field_6=int(speed) if speed is not None else None,
+        field_10=_boolean(flight.on_ground),
+        field_9=int(stamp),
+        field_11=_text(flight.callsign),
+        field_15=int(stamp),
+        flight_number=_text(flight.number),
+        registration=_text(flight.registration),
+        origin=_text(flight.origin_airport_iata),
+        destination=_text(flight.destination_airport_iata),
+        aircraft_type=_text(flight.aircraft_code),
+        squawk=int(_number(flight.squawk)) if _number(flight.squawk) is not None else None,
+        vertical_speed_fpm=int(vertical_speed) if vertical_speed is not None else None,
+        icao_hex=_text(flight.icao_24bit),
     )
-    if entry is None:
-        raise RuntimeError("POST LiveFeed request was not found in HAR")
-
-    request = entry["request"]
-    body = request["postData"]["text"].encode("latin1")
-    headers = {
-        header["name"]: header["value"]
-        for header in request.get("headers", [])
-        if header.get("name", "").lower() in ALLOWED_HEADERS
-    }
-    if not body or not headers:
-        raise RuntimeError("HAR LiveFeed request is missing its body or allowed headers")
-    return body, headers
-
-
-def decode_response(data: bytes, request_index: int) -> tuple[list, list[str], list[dict], int | None, list[dict]]:
-    frames = decode_grpc_web_body(data)
-    feeds = []
-    errors = []
-    source_stats = []
-    server_time_ms = None
-    response_protobuf = []
-
-    for frame_index, frame in enumerate(frames):
-        if not frame.is_data:
-            continue
-        if frame.is_compressed:
-            errors.append(f"frame {frame_index}: compressed payload skipped")
-            continue
-        source = SourceRef(
-            http_record_index=request_index,
-            frame_index=frame_index,
-            protobuf_message_index=0,
-        )
-        try:
-            result = decode_feed_response(frame.payload, source, AnalysisContext())
-            response_protobuf.append({
-                "frame_index": frame_index,
-                "message": serialize_message(result.all_fields),
-            })
-            feeds.extend(result.feeds)
-            feeds.extend(result.selected_feeds)
-            source_stats = result.stats or source_stats
-            if result.server_time_ms is not None:
-                server_time_ms = result.server_time_ms
-        except Exception as exc:
-            errors.append(f"frame {frame_index}: {type(exc).__name__}: {exc}")
-
-    return feeds, errors, source_stats, server_time_ms, response_protobuf
 
 
 def main() -> None:
     setup_logging()
     config = load_config()
-    template, headers = load_request_template()
-    # Validate the template/config before opening the API listener.
-    build_request_body(template)
-
     server = start_api_server(API_HOST, API_PORT)
-    session = requests.Session()
-    request_index = 0
-    logging.info("FR24 Standard API collector started")
+    fr_api = FlightRadar24API(timeout=TIMEOUT_SECONDS)
+
+    logging.info("FR24 Standard API collector started; source: %s", SOURCE_NAME)
     logging.info(
         "Radar center %.5f, %.5f; radius %.1f km; API http://%s:%d",
         config["latitude"], config["longitude"], config["radius_km"], API_HOST, API_PORT,
     )
     logging.info("Polling interval: %d seconds", INTERVAL_SECONDS)
+    logging.info("No FR24 account credentials or API key are configured.")
 
+    request_index = 0
     try:
         while True:
             started = time.monotonic()
             request_index += 1
             try:
                 active_area = get_active_area(config)
-                response = session.post(
-                    URL,
-                    data=build_request_body(template, active_area),
-                    headers=headers,
-                    timeout=TIMEOUT_SECONDS,
+                bounds = fr_api.get_bounds_by_point(
+                    active_area["latitude"],
+                    active_area["longitude"],
+                    active_area["radius_km"] * 1000,
+                )
+                flights = fr_api.get_flights(bounds=bounds)
+                feeds = [
+                    normalized
+                    for flight in flights
+                    if (normalized := normalize_flight(flight)) is not None
+                ]
+
+                CACHE.update(
+                    feeds,
+                    source_stats=[{"flight_count": len(flights), "normalized_count": len(feeds)}],
+                    response_protobuf=[],
+                    source_name=SOURCE_NAME,
                 )
                 logging.info(
-                    "Request #%d: HTTP %d, %d bytes; radar %.5f, %.5f / %.1f km",
-                    request_index, response.status_code, len(response.content),
+                    "Request #%d: received %d FR24 flights, normalized %d; cache %d aircraft; radar %.5f, %.5f / %.1f km",
+                    request_index, len(flights), len(feeds), len(CACHE.snapshot()),
                     active_area["latitude"], active_area["longitude"], active_area["radius_km"],
                 )
-
-                if response.status_code in (401, 403):
-                    logging.error("FR24 returned HTTP %d; stopping collector (access denied)", response.status_code)
-                    break
-                response.raise_for_status()
-
-                if not response.content:
-                    logging.warning("Request #%d returned an empty body", request_index)
-                else:
-                    # Optional raw capture for diagnostics; disabled unless explicitly enabled in config.
-                    if bool(json.loads(CONFIG_FILE.read_text(encoding="utf-8-sig")).get("save_captures", False)):
-                        CAPTURE_DIR.mkdir(parents=True, exist_ok=True)
-                        stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
-                        (CAPTURE_DIR / f"live_{stamp}.bin").write_bytes(response.content)
-
-                    feeds, errors, source_stats, server_time_ms, response_protobuf = decode_response(response.content, request_index)
-                    CACHE.update(
-                        feeds,
-                        source_stats=source_stats,
-                        server_time_ms=server_time_ms,
-                        response_protobuf=response_protobuf,
-                    )
-                    logging.info("Request #%d: decoded %d feeds; cache currently %d aircraft", request_index, len(feeds), len(CACHE.snapshot()))
-                    for error in errors[:5]:
-                        logging.warning("Decode warning: %s", error)
-
-            except requests.RequestException as exc:
-                logging.error("HTTP request failed: %s: %s", type(exc).__name__, exc)
-            except Exception:
-                logging.exception("Request/decode cycle failed")
+            except Exception as exc:
+                logging.exception("FlightRadarAPI request #%d failed: %s", request_index, exc)
 
             delay = max(0.0, INTERVAL_SECONDS - (time.monotonic() - started))
             time.sleep(delay)
@@ -249,7 +170,6 @@ def main() -> None:
     except KeyboardInterrupt:
         logging.info("Stopping on Ctrl+C")
     finally:
-        session.close()
         server.shutdown()
         server.server_close()
         logging.info("FR24 Standard API collector stopped")
@@ -257,4 +177,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
