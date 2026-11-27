@@ -115,8 +115,38 @@ class _Handler(BaseHTTPRequestHandler):
             }
             if item.get("callsign"):
                 row["flight"] = item["callsign"]
-            if item.get("heading") is not None:
+
+            # Forward only documented FR24 metadata. Preserve valid false/zero
+            # values; omit fields that were not present in the upstream feed.
+            for name in (
+                "on_ground",
+                "altitude_ft",
+                "speed_kt",
+                "aircraft_type",
+                "registration",
+                "flight_number",
+                "origin",
+                "destination",
+                "squawk",
+                "vertical_speed_fpm",
+                "aircraft_age",
+                "country_of_reg",
+                "icao_address",
+                "status",
+                "icon",
+                "source",
+            ):
+                value = item.get(name)
+                if value is not None:
+                    row[name] = value
+
+            if item.get("icao_hex"):
+                row["hex"] = item["icao_hex"]
+            if item.get("track") is not None:
+                row["track"] = item["track"]
+            elif item.get("heading") is not None:
                 row["track"] = round(item["heading"], 1)
+
             selected.append(row)
 
         selected.sort(key=lambda row: row["_distance_nm"])
