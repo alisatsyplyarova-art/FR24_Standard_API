@@ -96,9 +96,17 @@ class AircraftCache:
                         "timestamp_s": None,
                         "timestamp_ms": None,
                         "points": OrderedDict(),
+                        "source_fields": {},
                         "last_seen": now,
                     },
                 )
+
+                source_fields = getattr(feed, "source_fields", None)
+                if isinstance(source_fields, dict):
+                    # Preserve every public SDK field, including values unknown to
+                    # this version of the Standard API. The nested object avoids
+                    # collisions with the API's legacy FR24-compatible field names.
+                    item["source_fields"].update(source_fields)
 
                 raw_message = serialize_message(getattr(feed, "all_fields", {}))
                 if raw_message["field_count"]:
@@ -230,6 +238,7 @@ class AircraftCache:
                     {
                         "id": item["id"],
                         "data_source": item.get("data_source"),
+                        "source_fields": dict(item.get("source_fields", {})),
                         "callsign": item["callsign"],
                         "flight_number": item.get("flight_number"),
                         "registration": item.get("registration"),
