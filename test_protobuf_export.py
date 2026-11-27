@@ -6,6 +6,18 @@ from protobuf_parser import collect_fields
 
 
 class ProtobufExportTests(unittest.TestCase):
+    def test_exposes_nested_unknown_field_numbers(self):
+        # Feed field 13 contains a nested message with unknown field 99.
+        payload = bytes.fromhex("6a 03 98 06 07")
+        exported = serialize_message(collect_fields(payload))
+        nested = exported["fields"][0]["nested_candidate"]
+
+        self.assertEqual(exported["fields"][0]["number"], 13)
+        self.assertEqual(exported["fields"][0]["nested_parse_status"], "protobuf_candidate")
+        self.assertEqual(nested["fields"][0]["number"], 99)
+        self.assertEqual(nested["fields"][0]["wire_type"], 0)
+        self.assertEqual(nested["fields"][0]["value_uint64"], 7)
+
     def test_preserves_all_fields_and_wire_bytes(self):
         # field 1: varint 150; field 2: LEN "abc"; field 3: fixed32 1.0;
         # field 99: unknown varint 7.
