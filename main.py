@@ -150,6 +150,8 @@ def _queue_flight_details(flights) -> int:
             DETAIL_QUEUE.put_nowait(flight)
             queued += 1
         except queue.Full:
+            with DETAIL_LOCK:
+                DETAIL_ATTEMPTED.pop(flight_id, None)
             break
     return queued
 
