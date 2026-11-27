@@ -1,3 +1,15 @@
+## Unreleased
+
+### Added
+- Configurable cap on FR24 areas processed per collector cycle (default 20).
+- Fair round-robin scheduling so deferred geographic areas are serviced in subsequent cycles.
+- Configurable minimum delay between upstream requests (default 250 ms).
+- Configurable request timeout and exponential retry for transient network/HTTP failures.
+- Unit tests for bounded scheduling and fairness.
+
+### Changed
+- Capture saving is now read once from the loaded configuration rather than re-reading the JSON file for every FR24 response.
+
 # История изменений
 
 ## Unreleased — multi-area-cache-5s
