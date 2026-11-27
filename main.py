@@ -4,6 +4,8 @@ import json
 import logging
 import math
 import time
+import queue
+import threading
 from pathlib import Path
 
 from FlightRadarAPI import FlightRadar24API
@@ -21,6 +23,12 @@ TIMEOUT_SECONDS = 20
 API_HOST = "0.0.0.0"
 API_PORT = 8765
 SOURCE_NAME = "FlightRadarAPI (Flightradar24 website feed)"
+DETAIL_TTL_SECONDS = 900
+DETAIL_WORKER_MAX_PER_CYCLE = 3
+DETAIL_QUEUE: queue.Queue = queue.Queue(maxsize=32)
+DETAIL_CACHE: dict[str, tuple[float, dict]] = {}
+DETAIL_ATTEMPTED: dict[str, float] = {}
+DETAIL_LOCK = threading.RLock()
 
 
 def setup_logging() -> None:
@@ -80,6 +88,63 @@ def _boolean(value):
     return None
 
 
+def _detail_text(flight, name: str):
+    return _text(getattr(flight, name, None))
+
+
+def _detail_worker() -> None:
+    """Fetch a few flight-detail records in the background; never block live-feed polling."""
+    detail_api = FlightRadar24API(timeout=TIMEOUT_SECONDS)
+    while True:
+        flight = DETAIL_QUEUE.get()
+        try:
+            details = detail_api.get_flight_details(flight)
+            if details:
+                flight.set_flight_details(details)
+                names = (
+                    "airline_name", "airline_short_name",
+                    "origin_airport_name", "origin_airport_icao",
+                    "origin_airport_country_name", "origin_airport_country_code",
+                    "destination_airport_name", "destination_airport_icao",
+                    "destination_airport_country_name", "destination_airport_country_code",
+                    "aircraft_model", "status_text",
+                )
+                values = {name: _detail_text(flight, name) for name in names}
+                values = {name: value for name, value in values.items() if value}
+                with DETAIL_LOCK:
+                    DETAIL_CACHE[str(flight.id)] = (time.monotonic(), values)
+                logging.info("Flight details cached for %s (%d fields)", flight.id, len(values))
+        except Exception as exc:
+            logging.warning("Flight details request failed for %s: %s", getattr(flight, "id", "?"), exc)
+        finally:
+            DETAIL_QUEUE.task_done()
+
+
+def _queue_flight_details(flights) -> int:
+    queued = 0
+    now = time.monotonic()
+    for flight in flights:
+        if queued >= DETAIL_WORKER_MAX_PER_CYCLE:
+            break
+        flight_id = str(getattr(flight, "id", "") or "")
+        if not flight_id:
+            continue
+        with DETAIL_LOCK:
+            cached = DETAIL_CACHE.get(flight_id)
+            attempted = DETAIL_ATTEMPTED.get(flight_id, 0.0)
+            if cached and now - cached[0] < DETAIL_TTL_SECONDS:
+                continue
+            if now - attempted < DETAIL_TTL_SECONDS:
+                continue
+            DETAIL_ATTEMPTED[flight_id] = now
+        try:
+            DETAIL_QUEUE.put_nowait(flight)
+            queued += 1
+        except queue.Full:
+            break
+    return queued
+
+
 def normalize_flight(flight) -> Feed | None:
     """Map public FlightRadarAPI flight fields into the existing cache model."""
     latitude = _number(flight.latitude)
@@ -95,6 +160,10 @@ def normalize_flight(flight) -> Feed | None:
     speed = _number(flight.ground_speed)
     heading = _number(flight.heading)
     vertical_speed = _number(flight.vertical_speed)
+
+    with DETAIL_LOCK:
+        cached_details = DETAIL_CACHE.get(str(flight.id))
+        details = cached_details[1] if cached_details else {}
 
     return Feed(
         field_1=str(flight.id),
@@ -115,6 +184,20 @@ def normalize_flight(flight) -> Feed | None:
         squawk=int(_number(flight.squawk)) if _number(flight.squawk) is not None else None,
         vertical_speed_fpm=int(vertical_speed) if vertical_speed is not None else None,
         icao_hex=_text(flight.icao_24bit),
+        airline_icao=_text(flight.airline_icao),
+        airline_iata=_text(flight.airline_iata),
+        airline_name=details.get("airline_name"),
+        airline_short_name=details.get("airline_short_name"),
+        origin_name=details.get("origin_airport_name"),
+        origin_icao=details.get("origin_airport_icao"),
+        origin_country=details.get("origin_airport_country_name"),
+        origin_country_code=details.get("origin_airport_country_code"),
+        destination_name=details.get("destination_airport_name"),
+        destination_icao=details.get("destination_airport_icao"),
+        destination_country=details.get("destination_airport_country_name"),
+        destination_country_code=details.get("destination_airport_country_code"),
+        aircraft_model=details.get("aircraft_model"),
+        status_text=details.get("status_text"),
     )
 
 
@@ -122,6 +205,7 @@ def main() -> None:
     setup_logging()
     config = load_config()
     server = start_api_server(API_HOST, API_PORT)
+    threading.Thread(target=_detail_worker, name="FR24Details", daemon=True).start()
     fr_api = FlightRadar24API(timeout=TIMEOUT_SECONDS)
 
     logging.info("FR24 Standard API collector started; source: %s", SOURCE_NAME)
@@ -145,6 +229,7 @@ def main() -> None:
                     active_area["radius_km"] * 1000,
                 )
                 flights = fr_api.get_flights(bounds=bounds)
+                _queue_flight_details(flights)
                 feeds = [
                     normalized
                     for flight in flights
