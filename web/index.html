@@ -84,9 +84,10 @@ footer{padding:12px 3px;color:var(--muted);font-size:11px;display:flex;justify-c
   time_details:"Расписание и фактическое время",status_text:"Статус рейса",status_icon:"Иконка статуса",
   point_count:"Точек траектории",last_seen:"Последнее получение",trail:"Траектория",raw_details:"Исходные данные FR24"
  };
- function detailValue(v){
+ function detailValue(v,key){
   if(v===null||v===undefined||v===""||v==="N/A")return "Нет данных";
-  if(v===1||v===0)return v===1?"Да":"Нет";
+  if(typeof v==="boolean")return v?"Да":"Нет";
+  if(key==="on_ground")return Number(v)===1?"Да":Number(v)===0?"Нет":"Нет данных";
   if(typeof v==="object"){
    let s;try{s=JSON.stringify(v,null,2)}catch(_){s=String(v)}
    return s.length>1100?s.slice(0,1100)+"…":s;
@@ -95,7 +96,7 @@ footer{padding:12px 3px;color:var(--muted);font-size:11px;display:flex;justify-c
  }
  function detailLabel(k){return FIELD_LABELS[k]||k.replace(/_/g," ")}
  function detailCell(k,d){
-  const v=detailValue(d[k]);
+  const v=detailValue(d[k],k);
   return '<div class="detail-cell"><span>'+escapeHtml(detailLabel(k))+'</span><strong>'+escapeHtml(v)+'</strong></div>';
  }
  function renderDetail(a,extra={},error=null){
