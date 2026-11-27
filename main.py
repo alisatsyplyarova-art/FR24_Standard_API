@@ -219,7 +219,11 @@ def main() -> None:
                                 )
                             response.raise_for_status()
                             break
-                        except requests.RequestException:
+                        except requests.RequestException as exc:
+                            if isinstance(exc, requests.HTTPError) and exc.response is not None:
+                                status = exc.response.status_code
+                                if status != 429 and status < 500:
+                                    raise
                             if attempt >= config["max_retries"]:
                                 raise
                             delay = config["retry_backoff_seconds"] * (2 ** attempt)
