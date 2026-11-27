@@ -7,6 +7,8 @@ import time
 from collections import OrderedDict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+from protobuf_export import serialize_message
+
 
 class AircraftCache:
     """Bounded in-memory cache of the latest positions received from FR24."""
@@ -17,15 +19,18 @@ class AircraftCache:
         self._aircraft: dict[str, dict] = {}
         self._source_stats: list[dict[str, int]] = []
         self._feed_server_time_ms: int | None = None
+        self._feed_response_protobuf: list[dict] = []
         self._lock = threading.RLock()
 
-    def update(self, feeds, source_stats=None, server_time_ms=None) -> None:
+    def update(self, feeds, source_stats=None, server_time_ms=None, response_protobuf=None) -> None:
         now = time.time()
         with self._lock:
             if source_stats is not None:
                 self._source_stats = [dict(item) for item in source_stats]
             if server_time_ms is not None:
                 self._feed_server_time_ms = int(server_time_ms)
+            if response_protobuf is not None:
+                self._feed_response_protobuf = list(response_protobuf)
             for feed in feeds:
                 aircraft_id = getattr(feed, "field_1", None)
                 latitude = getattr(feed, "field_2", None)
@@ -87,6 +92,14 @@ class AircraftCache:
                         "last_seen": timestamp,
                     },
                 )
+
+                raw_message = serialize_message(getattr(feed, "all_fields", {}))
+                if raw_message["field_count"]:
+                    message_kind = "selected_feed" if getattr(feed, "is_selected", False) else "feed"
+                    item.setdefault("protobuf_messages", {})[message_kind] = {
+                        "captured_at_ms": int(timestamp * 1000),
+                        "message": raw_message,
+                    }
 
                 callsign = getattr(feed, "field_11", None)
                 if callsign:
@@ -152,6 +165,7 @@ class AircraftCache:
             return {
                 "source_stats": [dict(item) for item in self._source_stats],
                 "feed_server_time_ms": self._feed_server_time_ms,
+                "feed_response_protobuf": list(self._feed_response_protobuf),
             }
 
     def _remove_stale(self, now: float) -> None:
@@ -223,6 +237,7 @@ class AircraftCache:
                         "status": item.get("status"),
                         "on_ground": item.get("on_ground"),
                         "source": item.get("source"),
+                        "protobuf_messages": item.get("protobuf_messages", {}),
                         "altitude_ft": item.get("altitude_ft"),
                         "speed_kt": item.get("speed_kt"),
                         "points": points,
