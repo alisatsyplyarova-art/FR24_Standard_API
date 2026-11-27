@@ -71,8 +71,19 @@ class _Handler(BaseHTTPRequestHandler):
                 "active_area": area,
                 "source_stats": metadata["source_stats"],
                 "feed_server_time_ms": metadata["feed_server_time_ms"],
-                "feed_response_protobuf": metadata["feed_response_protobuf"],
+                "feed_response_frames": len(metadata["feed_response_protobuf"]),
                 "now": int(now * 1000),
+            })
+            return
+
+        if path == "/protobuf/latest":
+            metadata = CACHE.metadata_snapshot()
+            frames = metadata["feed_response_protobuf"]
+            self._send_json(200, {
+                "frames": frames,
+                "count": len(frames),
+                "feed_server_time_ms": metadata["feed_server_time_ms"],
+                "timestamp": int(now * 1000),
             })
             return
 
