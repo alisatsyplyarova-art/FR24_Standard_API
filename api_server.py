@@ -90,10 +90,14 @@ class _Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/aircraft":
-            aircraft = CACHE.snapshot()
+            # Include retained aircraft here; each record carries is_stale/seen_seconds.
+            # ESP32-compatible radar routes below use CACHE.snapshot() and expose active aircraft only.
+            aircraft = CACHE.snapshot(include_stale=True)
             self._send_json(200, {
                 "aircraft": aircraft,
                 "count": len(aircraft),
+                "active_count": sum(1 for item in aircraft if not item["is_stale"]),
+                "stale_count": sum(1 for item in aircraft if item["is_stale"]),
                 "timestamp": now,
             })
             return
