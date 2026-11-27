@@ -1,6 +1,10 @@
 ## Unreleased
 
 ### Added
+- Testable upstream HTTP client with bounded retries and pacing.
+- Stable-key round-robin behavior when the active area list changes.
+- Flight Radar D Clock 1.1.132 response-contract tests and compatibility notes.
+- Concurrent API load probe for 10, 50, and 100 clients.
 - Configurable cap on FR24 areas processed per collector cycle (default 20).
 - Fair round-robin scheduling so deferred geographic areas are serviced in subsequent cycles.
 - Configurable minimum delay between upstream requests (default 250 ms).
