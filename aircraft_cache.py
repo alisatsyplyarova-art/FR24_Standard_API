@@ -88,6 +88,8 @@ class AircraftCache:
                         "status": None,
                         "on_ground": None,
                         "source": None,
+                        "timestamp_s": None,
+                        "timestamp_ms": None,
                         "points": OrderedDict(),
                         "last_seen": timestamp,
                     },
@@ -100,6 +102,11 @@ class AircraftCache:
                         "captured_at_ms": int(timestamp * 1000),
                         "message": raw_message,
                     }
+
+                timestamp_s = getattr(feed, "field_9", None)
+                if timestamp_s is not None:
+                    item["timestamp_s"] = int(timestamp_s)
+                item["timestamp_ms"] = stamp
 
                 callsign = getattr(feed, "field_11", None)
                 if callsign:
@@ -237,6 +244,8 @@ class AircraftCache:
                         "status": item.get("status"),
                         "on_ground": item.get("on_ground"),
                         "source": item.get("source"),
+                        "timestamp_s": item.get("timestamp_s"),
+                        "timestamp_ms": item.get("timestamp_ms"),
                         "protobuf_messages": item.get("protobuf_messages", {}),
                         "altitude_ft": item.get("altitude_ft"),
                         "speed_kt": item.get("speed_kt"),
