@@ -44,13 +44,21 @@ def load_config() -> dict:
     lat = float(config["latitude"])
     lon = float(config["longitude"])
     radius_km = float(config["radius_km"])
+    fetch_details = config.get("fetch_details", False)
+    if not isinstance(fetch_details, bool):
+        raise ValueError("fetch_details must be true or false")
     if not all(math.isfinite(v) for v in (lat, lon, radius_km)):
         raise ValueError("Radar settings must be finite numbers")
     if not (-90 <= lat <= 90 and -180 <= lon <= 180):
         raise ValueError("Coordinates are out of range")
     if not (0 < radius_km <= 20000):
         raise ValueError("Radius must be between 0 and 20000 km")
-    return {"latitude": lat, "longitude": lon, "radius_km": radius_km}
+    return {
+        "latitude": lat,
+        "longitude": lon,
+        "radius_km": radius_km,
+        "fetch_details": fetch_details,
+    }
 
 
 def _number(value):
@@ -161,6 +169,7 @@ def main() -> None:
     )
     logging.info("Polling interval: %d seconds", INTERVAL_SECONDS)
     logging.info("No FR24 account credentials or API key are configured.")
+    logging.info("Per-aircraft detail requests: %s", "enabled" if config["fetch_details"] else "disabled")
 
     request_index = 0
     try:
@@ -174,7 +183,10 @@ def main() -> None:
                     active_area["longitude"],
                     active_area["radius_km"] * 1000,
                 )
-                flights = fr_api.get_flights(bounds=bounds)
+                flights = fr_api.get_flights(
+                    bounds=bounds,
+                    details=config["fetch_details"],
+                )
                 feeds = [
                     normalized
                     for flight in flights
