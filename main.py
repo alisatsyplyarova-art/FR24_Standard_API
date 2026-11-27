@@ -90,6 +90,7 @@ def normalize_flight(flight) -> Feed | None:
     if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
         return None
 
+    stamp_ms = int(stamp * 1000) if stamp < 100_000_000_000 else int(stamp)
     altitude = _number(flight.altitude)
     speed = _number(flight.ground_speed)
     heading = _number(flight.heading)
@@ -105,7 +106,7 @@ def normalize_flight(flight) -> Feed | None:
         field_10=_boolean(flight.on_ground),
         field_9=int(stamp),
         field_11=_text(flight.callsign),
-        field_15=int(stamp),
+        field_15=stamp_ms,
         flight_number=_text(flight.number),
         registration=_text(flight.registration),
         origin=_text(flight.origin_airport_iata),
