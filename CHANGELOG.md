@@ -29,3 +29,12 @@
 - Документация по архитектуре, API, эксплуатации, разделению компонентов и дорожная карта.
 
 > Изменения находятся в отдельной ветке. Нагрузочное тестирование и проверка на реальном HAR ещё обязательны.
+
+
+## Unreleased — LiveFeed metadata
+
+- Added decoding for Feed track, altitude, speed, status, on-ground and ExtraFlightInfo metadata.
+- Added selected-flight records to the collector input so supplementary metadata is not lost.
+- Preserved multi-area collection, scheduling and per-device filtering.
+- Added protobuf schema unit tests for root Feed fields and nested ExtraFlightInfo.
+- Does not synthesize airline names, airport names or status text when the source does not provide confirmed values.
