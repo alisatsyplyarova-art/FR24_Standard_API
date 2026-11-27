@@ -106,6 +106,8 @@ class Feed:
     missing: list[str] = field(default_factory=list)
     source: SourceRef | None = None
     is_selected: bool = False
+    # Complete JSON-safe set of public attributes exposed by the source SDK.
+    source_fields: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
