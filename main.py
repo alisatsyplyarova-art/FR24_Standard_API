@@ -80,6 +80,35 @@ def _boolean(value):
     return None
 
 
+def _json_safe(value, depth: int = 0):
+    """Convert every public SDK attribute to JSON-safe data without dropping fields."""
+    if depth > 8:
+        return str(value)
+    if value is None or isinstance(value, (str, bool, int)):
+        return value
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item, depth + 1) for key, item in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_json_safe(item, depth + 1) for item in value]
+    if hasattr(value, "isoformat"):
+        try:
+            return value.isoformat()
+        except Exception:
+            pass
+    return str(value)
+
+
+def _public_flight_fields(flight) -> dict:
+    """Keep all public attributes supplied by FlightRadarAPI, including future additions."""
+    fields = {}
+    for name, value in vars(flight).items():
+        if not name.startswith("_"):
+            fields[name] = _json_safe(value)
+    return fields
+
+
 def normalize_flight(flight) -> Feed | None:
     """Map public FlightRadarAPI flight fields into the existing cache model."""
     latitude = _number(flight.latitude)
@@ -115,6 +144,7 @@ def normalize_flight(flight) -> Feed | None:
         squawk=int(_number(flight.squawk)) if _number(flight.squawk) is not None else None,
         vertical_speed_fpm=int(vertical_speed) if vertical_speed is not None else None,
         icao_hex=_text(flight.icao_24bit),
+        source_fields=_public_flight_fields(flight),
     )
 
 
