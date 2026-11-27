@@ -7,8 +7,6 @@ import time
 from collections import OrderedDict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from protobuf_export import serialize_message
-
 
 class AircraftCache:
     """Bounded in-memory cache of the latest positions received from FR24."""
@@ -94,14 +92,6 @@ class AircraftCache:
                         "last_seen": timestamp,
                     },
                 )
-
-                raw_message = serialize_message(getattr(feed, "all_fields", {}))
-                if raw_message["field_count"]:
-                    message_kind = "selected_feed" if getattr(feed, "is_selected", False) else "feed"
-                    item.setdefault("protobuf_messages", {})[message_kind] = {
-                        "captured_at_ms": int(timestamp * 1000),
-                        "message": raw_message,
-                    }
 
                 timestamp_s = getattr(feed, "field_9", None)
                 if timestamp_s is not None:
