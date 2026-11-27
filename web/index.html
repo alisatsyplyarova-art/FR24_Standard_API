@@ -14,7 +14,7 @@ header{height:68px;padding:0 22px;display:flex;align-items:center;justify-conten
 main{padding:16px;max-width:1800px;margin:auto}.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:14px}
 .stat,.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px}.stat{padding:13px 16px}.stat-label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px}.stat-value{font-size:23px;font-weight:750;margin-top:3px}.stat small{font-size:11px;color:var(--muted);font-weight:400}
 .layout{display:grid;grid-template-columns:minmax(0,1.8fr) minmax(310px,.8fr);gap:14px}.panel-head{padding:13px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px}.panel-title{font-weight:700}.muted{color:var(--muted);font-size:12px}#map{height:510px;width:100%;background:#0b1825;border-radius:0 0 12px 12px}
-.side{display:flex;flex-direction:column;min-height:560px}.detail{padding:16px;flex:1}.detail-name{font-size:20px;font-weight:800}.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:16px}.detail-cell{padding:11px;background:var(--panel2);border-radius:8px}.detail-cell span{display:block;color:var(--muted);font-size:11px}.detail-cell strong{display:block;margin-top:3px;font-size:17px}.detail-note{color:var(--muted);font-size:12px;margin-top:15px;line-height:1.6}
+.side{display:flex;flex-direction:column;min-height:560px}.detail{padding:14px;flex:1;overflow:auto;max-height:760px}.detail-name{font-size:20px;font-weight:800}.detail-sub{font-size:11px;color:var(--muted);margin-top:3px}.detail-tabs{display:flex;flex-wrap:wrap;gap:6px;margin:14px 0 12px}.detail-tab{padding:7px 10px;border:1px solid var(--line);border-radius:7px;background:#0a1623;color:var(--muted);font-size:12px}.detail-tab.active{background:#12364a;border-color:#2d718e;color:var(--cyan)}.detail-section{margin:10px 0}.detail-section-title{font-size:11px;color:var(--cyan);text-transform:uppercase;letter-spacing:.8px;margin:12px 0 7px}.detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.detail-cell{padding:9px;background:var(--panel2);border-radius:8px;min-width:0}.detail-cell span{display:block;color:var(--muted);font-size:10px}.detail-cell strong{display:block;margin-top:3px;font-size:13px;font-weight:650;overflow-wrap:anywhere;white-space:pre-wrap}.detail-note{color:var(--muted);font-size:11px;margin-top:12px;line-height:1.6}.detail-loading{color:var(--amber);font-size:12px;margin:10px 0}.detail-error{color:#ffb0a8;font-size:12px;margin:10px 0}.detail-actions{display:flex;gap:7px;margin-top:10px}.detail-actions button{font-size:11px}
 .table-panel{margin-top:14px;overflow:hidden}.table-tools{display:flex;gap:8px;align-items:center}.search{background:#0a1623;border:1px solid var(--line);border-radius:7px;color:var(--text);padding:8px 10px;min-width:190px;outline:none}.search:focus{border-color:var(--cyan)}button{background:#12364a;color:var(--cyan);border:1px solid #24516a;border-radius:7px;padding:8px 12px;cursor:pointer}
 .table-wrap{overflow:auto;max-height:360px}table{width:100%;border-collapse:collapse;white-space:nowrap}th{text-align:left;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.8px;background:#0d1927;position:sticky;top:0;padding:11px 14px}td{padding:11px 14px;border-top:1px solid #1b2c3e;font-variant-numeric:tabular-nums}tbody tr{cursor:pointer}tbody tr:hover,tbody tr.selected{background:#142a3d}.callsign{font-weight:750;color:#e9f7ff}.empty{text-align:center;padding:32px;color:var(--muted)}
 .leaflet-container{font:12px "Segoe UI",Arial,sans-serif}.leaflet-popup-content-wrapper,.leaflet-popup-tip{background:#102033;color:var(--text)}.leaflet-control-attribution{font-size:9px!important}
@@ -51,7 +51,7 @@ footer{padding:12px 3px;color:var(--muted);font-size:11px;display:flex;justify-c
 (function(){
  const map=L.map("map",{zoomControl:true}).setView([20,0],2);
  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:18,attribution:"© OpenStreetMap contributors"}).addTo(map);
- const markers=new Map(); let areaCircle=null,centerMarker=null,area=null,aircraft=[],selected=null,firstArea=true;
+ const markers=new Map(); let areaCircle=null,centerMarker=null,area=null,aircraft=[],selected=null,firstArea=true;\n const detailCache=new Map(),detailLoading=new Set(),detailErrors=new Map(); let detailTab="aircraft";
  const $=id=>document.getElementById(id);
  const fmt=(v,d=0)=>v===null||v===undefined||!Number.isFinite(Number(v))?"—":Number(v).toLocaleString("ru-RU",{maximumFractionDigits:d,minimumFractionDigits:d});
  function distanceNm(lat1,lon1,lat2,lon2){
@@ -60,18 +60,91 @@ footer{padding:12px 3px;color:var(--muted);font-size:11px;display:flex;justify-c
   return 2*r*Math.asin(Math.min(1,Math.sqrt(a)));
  }
  function label(a){return a.callsign||("FR24 "+a.id)}
+ const DETAIL_GROUPS={
+  aircraft:{title:"Самолёт",keys:["registration","icao_24bit","aircraft_code","aircraft_model","aircraft_age","aircraft_country_id","aircraft_images","aircraft_history"]},
+  airline:{title:"Авиакомпания",keys:["airline_name","airline_short_name","airline_icao","airline_iata","airline_country_name","airline_country","airline_country_code","airline_country_id"]},
+  route:{title:"Маршрут",keys:["number","callsign","origin_airport_iata","origin_airport_name","origin_airport_icao","origin_airport_country_name","origin_airport_country_code","origin_airport_terminal","origin_airport_gate","origin_airport_baggage","destination_airport_iata","destination_airport_name","destination_airport_icao","destination_airport_country_name","destination_airport_country_code","destination_airport_terminal","destination_airport_gate","destination_airport_baggage","time_details","status_text","status_icon"]},
+  flight:{title:"Полёт",keys:["altitude","ground_speed","heading","vertical_speed","on_ground","time","squawk","latitude","longitude","current","points","point_count","last_seen","trail"]}
+ };
+ const FIELD_LABELS={
+  id:"FR24 ID",callsign:"Позывной",number:"Номер рейса",registration:"Регистрация",icao_24bit:"ICAO24",
+  aircraft_code:"Код модели",aircraft_model:"Модель самолёта",aircraft_age:"Возраст самолёта",aircraft_country_id:"Страна регистрации (ID FR24)",
+  aircraft_images:"Фотографии",aircraft_history:"История самолёта",airline_name:"Авиакомпания",airline_short_name:"Краткое название",
+  airline_icao:"ICAO авиакомпании",airline_iata:"IATA авиакомпании",airline_country_name:"Страна авиакомпании",
+  airline_country:"Страна авиакомпании",airline_country_code:"Код страны авиакомпании",airline_country_id:"ID страны авиакомпании",
+  origin_airport_iata:"Аэропорт вылета (IATA)",origin_airport_name:"Аэропорт вылета",origin_airport_icao:"Аэропорт вылета (ICAO)",
+  origin_airport_country_name:"Страна вылета",origin_airport_country_code:"Код страны вылета",origin_airport_terminal:"Терминал вылета",
+  origin_airport_gate:"Выход вылета",origin_airport_baggage:"Багаж вылета",
+  destination_airport_iata:"Аэропорт назначения (IATA)",destination_airport_name:"Аэропорт назначения",
+  destination_airport_icao:"Аэропорт назначения (ICAO)",destination_airport_country_name:"Страна назначения",
+  destination_airport_country_code:"Код страны назначения",destination_airport_terminal:"Терминал прилёта",
+  destination_airport_gate:"Выход прилёта",destination_airport_baggage:"Багаж прилёта",
+  altitude:"Высота, ft",ground_speed:"Скорость, kt",heading:"Курс, °",vertical_speed:"Вертикальная скорость, ft/min",
+  on_ground:"На земле",time:"Время позиции",squawk:"Squawk",latitude:"Широта",longitude:"Долгота",
+  time_details:"Расписание и фактическое время",status_text:"Статус рейса",status_icon:"Иконка статуса",
+  point_count:"Точек траектории",last_seen:"Последнее получение",trail:"Траектория",raw_details:"Исходные данные FR24"
+ };
+ function detailValue(v){
+  if(v===null||v===undefined||v===""||v==="N/A")return "Нет данных";
+  if(v===1||v===0)return v===1?"Да":"Нет";
+  if(typeof v==="object"){
+   let s;try{s=JSON.stringify(v,null,2)}catch(_){s=String(v)}
+   return s.length>1100?s.slice(0,1100)+"…":s;
+  }
+  return String(v);
+ }
+ function detailLabel(k){return FIELD_LABELS[k]||k.replace(/_/g," ")}
+ function detailCell(k,d){
+  const v=detailValue(d[k]);
+  return '<div class="detail-cell"><span>'+escapeHtml(detailLabel(k))+'</span><strong>'+escapeHtml(v)+'</strong></div>';
+ }
+ function renderDetail(a,extra={},error=null){
+  const d=Object.assign({},a||{},extra||{}),id=String(d.id??a.id),loading=detailLoading.has(id);
+  const routeFrom=d.origin_airport_name||d.origin_airport_iata||"Нет данных";
+  const routeTo=d.destination_airport_name||d.destination_airport_iata||"Нет данных";
+  const tabs=Object.keys(DETAIL_GROUPS).map(k=>'<button class="detail-tab '+(detailTab===k?"active":"")+'" data-detail-tab="'+k+'">'+DETAIL_GROUPS[k].title+'</button>').join("")+
+   '<button class="detail-tab '+(detailTab==="all"?"active":"")+'" data-detail-tab="all">Все поля</button>';
+  let body="";
+  if(detailTab==="all"){
+   const keys=Object.keys(d).filter(k=>k!=="points"&&k!=="current");
+   body='<div class="detail-grid">'+keys.map(k=>detailCell(k,d)).join("")+'</div>';
+   if(d.current)body+='<div class="detail-section-title">Текущая позиция</div><div class="detail-grid">'+["latitude","longitude","timestamp"].map(k=>detailCell(k,d.current)).join("")+'</div>';
+   if(d.points)body+='<div class="detail-note">История координат: '+d.points.length+' точек. Полный список доступен в поле «Все поля» API.</div>';
+  }else{
+   const g=DETAIL_GROUPS[detailTab]||DETAIL_GROUPS.aircraft;
+   body='<div class="detail-section-title">'+g.title+'</div><div class="detail-grid">'+g.keys.map(k=>detailCell(k,d)).join("")+'</div>';
+   if(detailTab==="route")body='<div class="detail-route">'+escapeHtml(routeFrom)+' → '+escapeHtml(routeTo)+'</div>'+body;
+   if(detailTab==="flight"&&d.current)body+='<div class="detail-section-title">Последняя координата</div><div class="detail-grid">'+["latitude","longitude","timestamp"].map(k=>detailCell(k,d.current)).join("")+'</div>';
+  }
+  $("details").innerHTML='<div class="detail-name">'+escapeHtml(d.callsign||d.number||("FR24 "+id))+'</div>'+
+   '<div class="detail-sub">FR24 ID: '+escapeHtml(id)+' · источник: FlightRadar24</div><div class="detail-tabs">'+tabs+'</div>'+
+   (loading?'<div class="detail-loading">Загружаю маршрут, модель и данные рейса…</div>':"")+
+   (error?'<div class="detail-error">Подробности не получены: '+escapeHtml(error)+'</div><div class="detail-actions"><button id="retryDetails">Повторить загрузку</button></div>':"")+
+   body+'<div class="detail-note">Поля без значения отображаются как «Нет данных». Данные не подменяются предположениями.</div>';
+  document.querySelectorAll("[data-detail-tab]").forEach(b=>b.addEventListener("click",()=>{detailTab=b.dataset.detailTab;renderDetail(a,extra,detailErrors.get(id)||null)}));
+  const retry=$("retryDetails");if(retry)retry.addEventListener("click",()=>{detailErrors.delete(id);detailCache.delete(id);loadDetails(id)});
+ }
  function showDetails(a){
-  selected=a; $("selectedId").textContent="FR24 "+a.id;
-  const c=a.current||{},dist=a.distance_nm;
-  $("details").innerHTML='<div class="detail-name">'+escapeHtml(label(a))+'</div><div class="muted">FR24 ID: '+escapeHtml(a.id)+'</div><div class="detail-grid">'+
-   cell("Высота",a.altitude_ft===null||a.altitude_ft===undefined?"—":fmt(a.altitude_ft)+" ft")+
-   cell("Скорость",a.speed_kt===null||a.speed_kt===undefined?"—":fmt(a.speed_kt)+" kt")+
-   cell("Курс",a.heading===null||a.heading===undefined?"—":fmt(a.heading,1)+"°")+
-   cell("Расстояние",dist===null||dist===undefined?"—":fmt(dist,1)+" NM")+
-   cell("Широта",fmt(c.latitude,5))+cell("Долгота",fmt(c.longitude,5))+
-   '</div><div class="detail-note">Последняя позиция: '+(c.timestamp?new Date(c.timestamp).toLocaleTimeString("ru-RU"):"—")+
-   '<br>Возраст позиции: '+(a.last_seen?fmt(Math.max(0,Date.now()/1000-a.last_seen),0)+" сек.":"—")+
-   '<br>ICAO hex: не предоставлен в декодированных полях FR24; внутренний ID не подменяет ICAO.</div>';
+  const id=String(a.id);
+  if(!selected||String(selected.id)!==id)detailTab="aircraft";
+  selected=a;$("selectedId").textContent="FR24 "+id;
+  renderDetail(a,detailCache.get(id)||{},detailErrors.get(id)||null);
+  if(!detailCache.has(id)&&!detailLoading.has(id)&&!detailErrors.has(id))loadDetails(id);
+ }
+ async function loadDetails(id){
+  detailLoading.add(id);
+  if(selected&&String(selected.id)===String(id))renderDetail(selected,detailCache.get(String(id))||{});
+  try{
+   const response=await fetch("/aircraft/"+encodeURIComponent(id)+"/details",{cache:"no-store"});
+   const payload=await response.json();
+   if(!response.ok)throw new Error(payload.error||("HTTP "+response.status));
+   detailCache.set(String(id),payload.details||{});
+   detailErrors.delete(String(id));
+  }catch(e){detailErrors.set(String(id),String(e.message||e))}
+  finally{
+   detailLoading.delete(id);
+   if(selected&&String(selected.id)===String(id))renderDetail(selected,detailCache.get(String(id))||{},detailErrors.get(String(id))||null);
+  }
  }
  function cell(k,v){return '<div class="detail-cell"><span>'+k+'</span><strong>'+v+'</strong></div>'}
  function escapeHtml(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
