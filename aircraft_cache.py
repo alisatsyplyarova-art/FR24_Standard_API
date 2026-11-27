@@ -207,6 +207,8 @@ class AircraftCache:
                     "points": points,
                     "current": points[-1],
                     "heading": heading,
+                    "altitude_ft": item.get("altitude"),
+                    "speed_kt": item.get("ground_speed"),
                     "point_count": len(points),
                     "last_seen": item["last_seen"],
                 })
