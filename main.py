@@ -16,6 +16,7 @@ from api_server import get_active_area, start_api_server
 from feed_decoder import decode_feed_response
 from grpc_web import decode_grpc_web_body
 from model import SourceRef
+from protobuf_export import serialize_message
 
 BASE_DIR = Path(__file__).resolve().parent
 HAR_FILE = BASE_DIR / "www.flightradar24.com.har"
@@ -141,12 +142,13 @@ def load_request_template() -> tuple[bytes, dict[str, str]]:
     return body, headers
 
 
-def decode_response(data: bytes, request_index: int) -> tuple[list, list[str]]:
+def decode_response(data: bytes, request_index: int) -> tuple[list, list[str], list[dict], int | None, list[dict]]:
     frames = decode_grpc_web_body(data)
     feeds = []
     errors = []
     source_stats = []
     server_time_ms = None
+    response_protobuf = []
 
     for frame_index, frame in enumerate(frames):
         if not frame.is_data:
@@ -161,6 +163,10 @@ def decode_response(data: bytes, request_index: int) -> tuple[list, list[str]]:
         )
         try:
             result = decode_feed_response(frame.payload, source, AnalysisContext())
+            response_protobuf.append({
+                "frame_index": frame_index,
+                "message": serialize_message(result.all_fields),
+            })
             feeds.extend(result.feeds)
             feeds.extend(result.selected_feeds)
             source_stats = result.stats or source_stats
@@ -169,7 +175,7 @@ def decode_response(data: bytes, request_index: int) -> tuple[list, list[str]]:
         except Exception as exc:
             errors.append(f"frame {frame_index}: {type(exc).__name__}: {exc}")
 
-    return feeds, errors, source_stats, server_time_ms
+    return feeds, errors, source_stats, server_time_ms, response_protobuf
 
 
 def main() -> None:
@@ -221,8 +227,13 @@ def main() -> None:
                         stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
                         (CAPTURE_DIR / f"live_{stamp}.bin").write_bytes(response.content)
 
-                    feeds, errors, source_stats, server_time_ms = decode_response(response.content, request_index)
-                    CACHE.update(feeds, source_stats=source_stats, server_time_ms=server_time_ms)
+                    feeds, errors, source_stats, server_time_ms, response_protobuf = decode_response(response.content, request_index)
+                    CACHE.update(
+                        feeds,
+                        source_stats=source_stats,
+                        server_time_ms=server_time_ms,
+                        response_protobuf=response_protobuf,
+                    )
                     logging.info("Request #%d: decoded %d feeds; cache currently %d aircraft", request_index, len(feeds), len(CACHE.snapshot()))
                     for error in errors[:5]:
                         logging.warning("Decode warning: %s", error)
