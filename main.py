@@ -140,6 +140,11 @@ def load_request_template() -> tuple[bytes, dict[str, str]]:
 
 
 def decode_response(data: bytes, request_index: int) -> tuple[list, list[str]]:
+    """Decode all regular and selected LiveFeed records.
+
+    Selected records may contain ExtraFlightInfo absent from the regular feed.
+    AircraftCache merges both by FR24's internal aircraft ID and timestamp.
+    """
     frames = decode_grpc_web_body(data)
     feeds, errors = [], []
     for frame_index, frame in enumerate(frames):
@@ -150,7 +155,9 @@ def decode_response(data: bytes, request_index: int) -> tuple[list, list[str]]:
             continue
         source = SourceRef(request_index, frame_index, 0)
         try:
-            feeds.extend(decode_feed_response(frame.payload, source, AnalysisContext()).feeds)
+            result = decode_feed_response(frame.payload, source, AnalysisContext())
+            feeds.extend(result.feeds)
+            feeds.extend(result.selected_feeds)
         except Exception as exc:
             errors.append(f"frame {frame_index}: {type(exc).__name__}: {exc}")
     return feeds, errors
