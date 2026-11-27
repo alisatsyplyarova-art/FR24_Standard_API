@@ -76,11 +76,42 @@ class _Handler(BaseHTTPRequestHandler):
             })
             return
 
-        if path in ("/aircraft", "/api/radar"):
+        if path == "/aircraft":
             aircraft = CACHE.snapshot()
             self._send_json(200, {
                 "aircraft": aircraft,
                 "count": len(aircraft),
+                "timestamp": now,
+            })
+            return
+
+        if path == "/api/radar":
+            radar = []
+            for item in CACHE.snapshot():
+                current = item["current"]
+                row = {
+                    "fr24_id": item["id"],
+                    "lat": current["latitude"],
+                    "lon": current["longitude"],
+                    "seen": max(0.0, now - item["last_seen"]),
+                    "seen_pos": max(0.0, now - current["timestamp"] / 1000.0),
+                }
+                for name, value in item.items():
+                    if name in ("id", "current", "last_seen"):
+                        continue
+                    if value is not None and value != {}:
+                        row[name] = value
+                if item.get("callsign"):
+                    row["flight"] = item["callsign"]
+                if row.get("track") is None and item.get("heading") is not None:
+                    row["track"] = round(item["heading"], 1)
+                if item.get("icao_hex"):
+                    row["hex"] = item["icao_hex"]
+                radar.append(row)
+
+            self._send_json(200, {
+                "aircraft": radar,
+                "count": len(radar),
                 "timestamp": now,
             })
             return
