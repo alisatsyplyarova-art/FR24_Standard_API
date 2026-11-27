@@ -77,6 +77,20 @@ class Feed:
     field_15: int | None = None
 
     flight_number: str | None = None
+    airline_icao: str | None = None
+    airline_iata: str | None = None
+    airline_name: str | None = None
+    airline_short_name: str | None = None
+    origin_name: str | None = None
+    origin_icao: str | None = None
+    origin_country: str | None = None
+    origin_country_code: str | None = None
+    destination_name: str | None = None
+    destination_icao: str | None = None
+    destination_country: str | None = None
+    destination_country_code: str | None = None
+    aircraft_model: str | None = None
+    status_text: str | None = None
     registration: str | None = None
     origin: str | None = None
     destination: str | None = None
