@@ -23,6 +23,12 @@ class ApiServerTests(unittest.TestCase):
                 },
                 "last_seen": 1_798_000_000.0,
                 "heading": 270.0,
+                "track": 270,
+                "altitude_ft": 32000,
+                "speed_kt": 450,
+                "on_ground": False,
+                "aircraft_type": "A320",
+                "icao_hex": "ABC123",
             },
             {
                 "id": "FAR456",
@@ -68,6 +74,11 @@ class ApiServerTests(unittest.TestCase):
         self.assertEqual(payload["ac"][0]["fr24_id"], "ABC123")
         self.assertEqual(payload["ac"][0]["flight"], "TEST123")
         self.assertEqual(payload["ac"][0]["track"], 270.0)
+        self.assertEqual(payload["ac"][0]["altitude_ft"], 32000)
+        self.assertEqual(payload["ac"][0]["speed_kt"], 450)
+        self.assertIs(payload["ac"][0]["on_ground"], False)
+        self.assertEqual(payload["ac"][0]["aircraft_type"], "A320")
+        self.assertEqual(payload["ac"][0]["hex"], "ABC123")
         api_server.AREAS.register.assert_called_once_with(54.91, 82.33, 50.0)
 
     def test_flight_radar_d_clock_1132_required_json_contract(self):
