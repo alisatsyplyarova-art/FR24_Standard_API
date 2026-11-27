@@ -8,8 +8,18 @@ from collections import OrderedDict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
+def _number(value):
+    if value is None or value == "N/A":
+        return None
+    try:
+        result = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return result if math.isfinite(result) else None
+
+
 class AircraftCache:
-    """Bounded in-memory cache of the latest positions received from FR24."""
+    """Bounded in-memory cache for live aircraft returned by FlightRadarAPI."""
 
     def __init__(self, max_points: int = 120, max_age: int = 120):
         self.max_points = max_points
@@ -17,31 +27,36 @@ class AircraftCache:
         self._aircraft: dict[str, dict] = {}
         self._lock = threading.RLock()
 
-    def update(self, feeds) -> None:
+    def update(self, flights) -> None:
         now = time.time()
         with self._lock:
-            for feed in feeds:
-                aircraft_id = getattr(feed, "field_1", None)
-                latitude = getattr(feed, "field_2", None)
-                longitude = getattr(feed, "field_3", None)
-                stamp = getattr(feed, "field_15", None)
+            for flight in flights:
+                # Accept both the previous protobuf Feed model and FlightRadarAPI Flight.
+                aircraft_id = getattr(flight, "field_1", None)
+                if aircraft_id is None:
+                    aircraft_id = getattr(flight, "id", None)
 
-                if aircraft_id is None or latitude is None or longitude is None or stamp is None:
+                latitude = _number(getattr(flight, "field_2", None))
+                if latitude is None:
+                    latitude = _number(getattr(flight, "latitude", None))
+                longitude = _number(getattr(flight, "field_3", None))
+                if longitude is None:
+                    longitude = _number(getattr(flight, "longitude", None))
+
+                stamp = getattr(flight, "field_15", None)
+                if stamp is None:
+                    stamp = getattr(flight, "time", None)
+                stamp_number = _number(stamp)
+
+                if aircraft_id is None or latitude is None or longitude is None or stamp_number is None:
                     continue
-
-                try:
-                    latitude = float(latitude)
-                    longitude = float(longitude)
-                    stamp = int(stamp)
-                except (TypeError, ValueError, OverflowError):
-                    continue
-
                 if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
                     continue
 
-                # FR24 Feed timestamps in this project are Unix milliseconds.
-                timestamp = stamp / 1000 if stamp > 100_000_000_000 else float(stamp)
-                if timestamp > now + 300 or now - timestamp > self.max_age:
+                # FlightRadarAPI exposes feed time in Unix seconds; the legacy
+                # protobuf decoder used milliseconds for large values.
+                timestamp = stamp_number / 1000 if stamp_number > 100_000_000_000 else stamp_number
+                if timestamp <= 0 or timestamp > now + 300 or now - timestamp > self.max_age:
                     continue
 
                 key = str(aircraft_id)
@@ -50,14 +65,23 @@ class AircraftCache:
                     {
                         "id": key,
                         "callsign": None,
+                        "altitude": None,
+                        "ground_speed": None,
                         "points": OrderedDict(),
                         "last_seen": timestamp,
                     },
                 )
 
-                callsign = getattr(feed, "field_11", None)
-                if callsign:
+                callsign = getattr(flight, "field_11", None) or getattr(flight, "callsign", None)
+                if callsign and callsign != "N/A":
                     item["callsign"] = str(callsign)
+
+                altitude = _number(getattr(flight, "altitude", None))
+                ground_speed = _number(getattr(flight, "ground_speed", None))
+                if altitude is not None:
+                    item["altitude"] = altitude
+                if ground_speed is not None:
+                    item["ground_speed"] = ground_speed
 
                 point = {
                     "latitude": latitude,
@@ -116,6 +140,8 @@ class AircraftCache:
                     {
                         "id": item["id"],
                         "callsign": item["callsign"],
+                        "altitude": item["altitude"],
+                        "ground_speed": item["ground_speed"],
                         "points": points,
                         "current": points[-1],
                         "heading": heading,
@@ -153,8 +179,7 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
-    def log_message(self, fmt, *args):
-        # Keep the collector console free of routine HTTP access messages.
+    def log_message(self, fmt: str, *args):
         return
 
 
