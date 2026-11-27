@@ -1,40 +1,24 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 import math
 import re
 import threading
 import time
+from collections import OrderedDict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 
 from aircraft_cache import CACHE
+from area_manager import AREAS
 
 
-_ROUTE = re.compile(r"^/v2/lat/(-?\d+(?:\.\d+)?)/lon/(-?\d+(?:\.\d+)?)/dist/(\d+(?:\.\d+)?)$")
+_ROUTE = re.compile(r"^/v2/lat/(-?\\d+(?:\\.\\d+)?)/lon/(-?\\d+(?:\\.\\d+)?)/dist/(\\d+(?:\\.\\d+)?)$")
 _EARTH_RADIUS_NM = 3440.065
-
-# Последняя область, запрошенная ESP32. До первого запроса используется radar_config.json.
-_ACTIVE_AREA_LOCK = threading.RLock()
-_ACTIVE_AREA: dict | None = None
-
-
-def set_active_area(latitude: float, longitude: float, radius_nm: float) -> None:
-    global _ACTIVE_AREA
-    with _ACTIVE_AREA_LOCK:
-        _ACTIVE_AREA = {
-            "latitude": latitude,
-            "longitude": longitude,
-            "radius_km": radius_nm * 1.852,
-            "radius_nm": radius_nm,
-        }
-
-
-def get_active_area(default: dict | None = None) -> dict | None:
-    with _ACTIVE_AREA_LOCK:
-        if _ACTIVE_AREA is not None:
-            return dict(_ACTIVE_AREA)
-    return dict(default) if default is not None else None
+_RESPONSE_CACHE_TTL = 5.0
+_RESPONSE_CACHE_MAX = 512
+_RESPONSE_CACHE: OrderedDict[tuple[float, float, float], tuple[float, dict]] = OrderedDict()
+_RESPONSE_CACHE_LOCK = threading.RLock()
 
 
 def _distance_nm(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -45,8 +29,29 @@ def _distance_nm(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return 2 * _EARTH_RADIUS_NM * math.asin(min(1.0, math.sqrt(a)))
 
 
+def _cached_response(key: tuple[float, float, float], now: float) -> dict | None:
+    with _RESPONSE_CACHE_LOCK:
+        item = _RESPONSE_CACHE.get(key)
+        if item is None:
+            return None
+        created, payload = item
+        if now - created > _RESPONSE_CACHE_TTL:
+            del _RESPONSE_CACHE[key]
+            return None
+        _RESPONSE_CACHE.move_to_end(key)
+        return payload
+
+
+def _store_response(key: tuple[float, float, float], now: float, payload: dict) -> None:
+    with _RESPONSE_CACHE_LOCK:
+        _RESPONSE_CACHE[key] = (now, payload)
+        _RESPONSE_CACHE.move_to_end(key)
+        while len(_RESPONSE_CACHE) > _RESPONSE_CACHE_MAX:
+            _RESPONSE_CACHE.popitem(last=False)
+
+
 class _Handler(BaseHTTPRequestHandler):
-    server_version = "FR24StandardAPI/1.0"
+    server_version = "FR24StandardAPI/2.0"
 
     def _send_json(self, status: int, payload: dict) -> None:
         body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
@@ -63,11 +68,10 @@ class _Handler(BaseHTTPRequestHandler):
 
         if path == "/health":
             aircraft = CACHE.snapshot()
-            area = get_active_area()
             self._send_json(200, {
                 "status": "ok",
                 "aircraft": len(aircraft),
-                "active_area": area,
+                "areas": AREAS.stats(),
                 "now": int(now * 1000),
             })
             return
@@ -83,14 +87,16 @@ class _Handler(BaseHTTPRequestHandler):
             return
 
         lat, lon, radius_nm = map(float, match.groups())
-        # Прошивка 1.1.127 ограничивает запрос радиусом 500 NM.
         if not (-90 <= lat <= 90 and -180 <= lon <= 180 and 0 < radius_nm <= 500):
             self._send_json(400, {"msg": "Invalid latitude, longitude or distance (maximum 500 NM)"})
             return
 
-        # Область запроса ESP32 становится областью следующего опроса LiveFeed.
-        # Так сервер не ограничивается координатами из radar_config.json.
-        set_active_area(lat, lon, radius_nm)
+        AREAS.register(lat, lon, radius_nm)
+        key = (round(lat, 4), round(lon, 4), round(radius_nm, 2))
+        cached = _cached_response(key, now)
+        if cached is not None:
+            self._send_json(200, cached)
+            return
 
         selected = []
         for item in CACHE.snapshot():
@@ -118,14 +124,16 @@ class _Handler(BaseHTTPRequestHandler):
             row.pop("_distance_nm", None)
 
         now_ms = int(now * 1000)
-        self._send_json(200, {
+        payload = {
             "ac": selected,
             "msg": "No error",
             "now": now_ms,
             "total": len(selected),
             "ctime": now_ms,
             "ptime": 0,
-        })
+        }
+        _store_response(key, now, payload)
+        self._send_json(200, payload)
 
     def log_message(self, fmt: str, *args) -> None:
         return
@@ -135,4 +143,3 @@ def start_api_server(host: str = "0.0.0.0", port: int = 8765) -> ThreadingHTTPSe
     server = ThreadingHTTPServer((host, port), _Handler)
     threading.Thread(target=server.serve_forever, name="FR24StandardAPI", daemon=True).start()
     return server
-
