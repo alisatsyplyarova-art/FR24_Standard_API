@@ -1,1 +1,12 @@
-﻿{"latitude":0.0,"longitude":0.0,"radius_km":100}
+{
+  "latitude": 0.0,
+  "longitude": 0.0,
+  "radius_km": 100,
+  "save_captures": false,
+  "max_areas_per_cycle": 20,
+  "upstream_interval_seconds": 0.25,
+  "max_retries": 2,
+  "retry_backoff_seconds": 1.0,
+  "request_timeout_seconds": 20,
+  "active_area_ttl_seconds": 35
+}
