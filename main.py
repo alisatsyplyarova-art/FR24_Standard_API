@@ -15,6 +15,10 @@ from analysis_context import AnalysisContext
 from api_server import start_api_server
 from area_manager import AREAS, RadarArea
 from feed_decoder import decode_feed_response
+from flight_details_client import (
+    FlightDetailsClient,
+    FlightNotFoundError,
+)
 from grpc_web import decode_grpc_web_body
 from model import SourceRef
 from upstream_scheduler import AreaScheduler
@@ -185,6 +189,9 @@ def main() -> None:
         backoff_seconds=config["retry_backoff_seconds"],
         timeout_seconds=config["request_timeout_seconds"],
     )
+    details_client = FlightDetailsClient(upstream, headers)
+    icao_retry_after: dict[str, float] = {}
+
     logging.info("FR24 multi-area collector started; API http://%s:%d", API_HOST, API_PORT)
     logging.info(
         "ESP batch window: %d sec; collector interval: %d sec; response cache: 5 sec; "
@@ -244,6 +251,48 @@ def main() -> None:
                                   area_index, type(exc).__name__, exc)
                 except Exception:
                     logging.exception("FR24 request/decode cycle failed for area %d", area_index)
+
+            # Enrich at most one aircraft with ICAO per collector cycle.
+            now = time.monotonic()
+            icao_retry_after = {
+                aircraft_id: until
+                for aircraft_id, until in icao_retry_after.items()
+                if until > now
+            }
+            candidate = CACHE.missing_icao_candidate(
+                exclude_ids=icao_retry_after.keys()
+            )
+
+            if candidate is not None:
+                try:
+                    icao_address = details_client.get_icao_address(candidate)
+                    if CACHE.set_icao(candidate, icao_address):
+                        logging.info(
+                            "FlightDetails: aircraft %s ICAO=%06X",
+                            candidate, icao_address,
+                        )
+                    else:
+                        logging.warning(
+                            "FlightDetails: aircraft %s disappeared from cache",
+                            candidate,
+                        )
+                except FlightNotFoundError as exc:
+                    icao_retry_after[candidate] = now + 300
+                    logging.info(
+                        "FlightDetails: aircraft %s not found; retry after 5 minutes: %s",
+                        candidate, exc,
+                    )
+                except PermissionError:
+                    logging.exception(
+                        "FR24 access denied during FlightDetails; stopping collector"
+                    )
+                    return
+                except Exception:
+                    icao_retry_after[candidate] = now + 60
+                    logging.exception(
+                        "FlightDetails failed for aircraft %s; retry after 60 seconds",
+                        candidate,
+                    )
 
             logging.info(
                 "Batch complete: %d feed records; %d aircraft in shared cache; processed %d/%d areas",

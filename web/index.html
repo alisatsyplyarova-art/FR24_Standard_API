@@ -1,0 +1,113 @@
+```html
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FR24 Radar — Standard API</title>
+
+    <link rel="stylesheet"
+          href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+
+    <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+    <header class="topbar">
+        <div class="brand">
+            <div class="brand-icon">✈</div>
+            <div>
+                <div class="brand-title">FR24 RADAR</div>
+                <div class="brand-subtitle">STANDARD API · LIVE AIR TRAFFIC</div>
+            </div>
+        </div>
+
+        <div class="connection">
+            <span id="statusDot" class="status-dot"></span>
+            <span id="statusText">ПОДКЛЮЧЕНИЕ...</span>
+            <span class="separator">|</span>
+            <span id="updateTime">--:--:--</span>
+        </div>
+    </header>
+
+    <main class="dashboard">
+        <section class="stats">
+            <div class="stat-card">
+                <div class="stat-label">САМОЛЁТОВ В РАЙОНЕ</div>
+                <div class="stat-value" id="aircraftCount">—</div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-label">РАДИУС РАДАРА</div>
+                <div class="stat-value" id="radarRadius">— <small>NM</small></div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-label">ЦЕНТР РАДАРА</div>
+                <div class="stat-value coordinate" id="radarCenter">—</div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-label">ОБНОВЛЕНИЕ</div>
+                <div class="stat-value">5 <small>SEC</small></div>
+            </div>
+        </section>
+
+        <section class="map-panel">
+            <div class="panel-heading">
+                <div>
+                    <h2>ВОЗДУШНАЯ ОБСТАНОВКА</h2>
+                    <span class="panel-subtitle">LIVE FLIGHT TRACKING</span>
+                </div>
+                <div class="map-legend">
+                    <span><i class="legend-dot radar"></i> Радар</span>
+                    <span><i class="legend-dot aircraft"></i> Самолёты</span>
+                </div>
+            </div>
+
+            <div id="map"></div>
+        </section>
+
+        <section class="table-panel">
+            <div class="panel-heading">
+                <div>
+                    <h2>ВОЗДУШНЫЕ СУДА</h2>
+                    <span class="panel-subtitle">ДАННЫЕ FR24 STANDARD API</span>
+                </div>
+                <div class="table-count" id="tableCount">0 БОРТОВ</div>
+            </div>
+
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ПОЗЫВНОЙ</th>
+                            <th>ICAO HEX</th>
+                            <th>ВЫСОТА, FT</th>
+                            <th>СКОРОСТЬ, KT</th>
+                            <th>КУРС, °</th>
+                            <th>ДИСТАНЦИЯ, NM</th>
+                            <th>ПОСЛЕДНЯЯ ПОЗИЦИЯ</th>
+                        </tr>
+                    </thead>
+                    <tbody id="aircraftTable">
+                        <tr>
+                            <td colspan="7" class="empty">
+                                ОЖИДАНИЕ ДАННЫХ FR24...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <footer>
+            <span>FR24 STANDARD API</span>
+            <span>LOCAL RADAR SERVER · PORT 8765</span>
+        </footer>
+    </main>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="./app.js"></script>
+</body>
+</html>
+```

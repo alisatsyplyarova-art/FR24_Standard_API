@@ -157,6 +157,41 @@ class AircraftCache:
 
             self._remove_stale(now)
 
+    def missing_icao_candidate(self, exclude_ids=None) -> str | None:
+        now = time.time()
+        excluded = {str(value) for value in (exclude_ids or ())}
+        with self._lock:
+            self._remove_stale(now)
+            candidates = (
+                item for item in self._aircraft.values()
+                if item.get("icao_address") is None
+                and item.get("icao_hex") is None
+                and str(item["id"]) not in excluded
+            )
+            candidate = max(
+                candidates,
+                key=lambda item: item["last_seen"],
+                default=None,
+            )
+            return candidate["id"] if candidate is not None else None
+
+    def set_icao(self, aircraft_id: str, icao_address: int) -> bool:
+        try:
+            value = int(icao_address)
+        except (TypeError, ValueError, OverflowError):
+            return False
+
+        if not 1 <= value <= 0xFFFFFF:
+            return False
+
+        with self._lock:
+            item = self._aircraft.get(str(aircraft_id))
+            if item is None:
+                return False
+            item["icao_address"] = value
+            item["icao_hex"] = f"{value:06X}"
+            return True
+
     def metadata_snapshot(self) -> dict:
         with self._lock:
             return {

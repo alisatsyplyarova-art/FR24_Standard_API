@@ -6,3 +6,25 @@ __pycache__/
 radar_config.json
 .env
 .env.*
+
+# Local backups and FR24 research data
+*.bak
+fr24_analysis/
+
+
+# Backup files
+*.bak_*
+
+
+# Web backups and large local datasets
+web/*.bak_*
+web/geonames/
+web/*.zip
+
+
+# One-time local migration and HAR inspection scripts
+add_icao_cache.py
+integrate_icao.py
+inspect_har.py
+inspect_icao_har.py
+
